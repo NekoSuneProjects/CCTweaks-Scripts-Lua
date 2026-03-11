@@ -225,23 +225,65 @@ What it does:
 
 Commands can be used with or without `/`.
 
+Main commands:
+
 - `help`
+- `help status`
 - `status`
+- `clear`
+- `new`
+- `save`
+- `save my_chat_name`
+- `load`
+- `load 1`
+- `exit`
+
+Provider commands:
+
 - `providers`
 - `providers list`
+- `providers info`
+- `providers info ollama`
 - `providers use ollama`
 - `providers use openai`
 - `providers use google`
 - `providers use grok`
 - `providers use litellm`
+- `providers use openrouter`
+- `providers use anthropic`
+- `providers use groq`
+- `providers use lmstudio`
+- `providers use localai`
+- `providers use vllm`
+
+Settings commands:
+
 - `settings list`
-- `settings set apiKey YOUR_KEY`
-- `settings set host http://127.0.0.1:4000`
+- `settings host`
+- `settings model`
+- `settings apiKey`
+- `settings systemPrompt`
+- `settings set host http://127.0.0.1:11434`
+- `settings set apiKey YOUR_API_KEY`
 - `settings set model llama3.2`
-- `save`
-- `load`
-- `new`
-- `exit`
+- `settings set systemPrompt You are a concise helpful assistant.`
+- `settings reset host`
+- `settings reset model`
+- `settings reset apiKey`
+- `settings reset systemPrompt`
+
+CTOS alias commands:
+
+- `ctos help`
+- `ctos status`
+- `ctos providers`
+- `ctos provider ollama`
+- `ctos provider openai`
+- `ctos list`
+- `ctos set host http://127.0.0.1:11434`
+- `ctos set model llama3.2`
+- `ctos set systemPrompt You are a helpful assistant.`
+- `ctos reset systemPrompt`
 
 ### ChatGPT Setup Examples
 
