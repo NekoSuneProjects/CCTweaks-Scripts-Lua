@@ -57,7 +57,8 @@ local UI = {
 local config = {
     playerName = os.getComputerLabel() or ("Jukebox-" .. os.getComputerID()),
     pairCode = tostring(math.random(1000, 9999)),
-    pairedRemotes = {}
+    pairedRemotes = {},
+    pairedSpeakers = {}
 }
 
 local playlist = {}
@@ -122,6 +123,10 @@ local function loadData()
 
     if type(config.pairedRemotes) ~= "table" then
         config.pairedRemotes = {}
+    end
+
+    if type(config.pairedSpeakers) ~= "table" then
+        config.pairedSpeakers = {}
     end
 end
 
@@ -220,15 +225,28 @@ local function trim(value)
 end
 
 local function queueSpeakerDiscovery()
-    rednet.broadcast({ type = "discover_speakers" }, PROTOCOL_SPEAKER)
+    rednet.broadcast({
+        type = "discover_speakers",
+        playerId = os.getComputerID(),
+    }, PROTOCOL_SPEAKER)
 end
 
 local function rememberSpeakerNode(id, name)
+    if config.pairedSpeakers[tostring(id)] ~= true then
+        return
+    end
+
     speakerNodes[tostring(id)] = {
         id = id,
         name = name or ("Speaker-" .. id),
         seenAt = os.clock()
     }
+end
+
+local function pairSpeakerNode(id)
+    config.pairedSpeakers[tostring(id)] = true
+    saveConfig()
+    markDirty()
 end
 
 local function getSpeakerCount()
@@ -995,6 +1013,21 @@ local function rednetLoop()
             if msg.type == "speaker_hello" then
                 rememberSpeakerNode(id, msg.name)
                 markDirty()
+            elseif msg.type == "speaker_pair_request" then
+                local ok = trim(msg.code) == trim(config.pairCode)
+
+                if ok then
+                    pairSpeakerNode(id)
+                    rememberSpeakerNode(id, msg.name)
+                end
+
+                rednet.send(id, {
+                    type = "speaker_pair_reply",
+                    ok = ok,
+                    playerId = os.getComputerID(),
+                    playerName = config.playerName,
+                    reason = ok and nil or "Invalid pair code",
+                }, PROTOCOL_SPEAKER)
             end
         elseif protocol == PROTOCOL_CONTROL then
             handleRemoteCommand(id, msg)
