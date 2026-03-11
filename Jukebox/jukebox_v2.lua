@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-2"
+local APP_VERSION = "2026.03.11-3"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -1037,6 +1037,7 @@ local function rednetLoop()
             if type(msg) == "table" and msg.type == "heartbeat" then
                 rememberRemoteNode(id, msg.remoteName)
                 markDirty()
+                sendStateToRemote(id)
             else
                 handleRemoteCommand(id, msg)
             end

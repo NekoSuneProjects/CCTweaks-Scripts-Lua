@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.11-2"
+local APP_VERSION = "2026.03.11-3"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -123,6 +123,7 @@ local function sendHeartbeat()
         targetId=pairData.targetId,
         remoteName=remoteName
     },PROTOCOL_CONTROL)
+    send("request_state")
 end
 
 ------------------------------------------------

@@ -1,8 +1,9 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-2"
+local APP_VERSION = "2026.03.11-3"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 local DATA_FILE = "/speaker_node_pair.db"
+local MAX_QUEUE = 4
 
 local speaker = peripheral.find("speaker")
 local modemName = peripheral.find("modem", function(name, modem)
@@ -66,14 +67,30 @@ local function redraw(status)
     print("Q/Back = Exit")
 end
 
+local function resetPlaybackState(session, status)
+    queue = {}
+    activeSession = session or 0
+    decoder = dfpwm.make_decoder()
+    speaker.stop()
+    if status then
+        redraw(status)
+    end
+end
+
 local function enqueueChunk(msg)
     if type(msg.chunk) ~= "string" then
         return
     end
 
     if msg.session ~= activeSession then
-        queue = {}
-        activeSession = msg.session or 0
+        resetPlaybackState(msg.session or 0)
+    end
+
+    if #queue >= MAX_QUEUE then
+        -- Drop stale buffered chunks so the node resyncs near-live instead of trailing behind.
+        while #queue >= MAX_QUEUE do
+            table.remove(queue, 1)
+        end
     end
 
     queue[#queue + 1] = msg.chunk
@@ -105,10 +122,7 @@ local function rednetLoop()
                 end
             elseif msg.type == "stop" then
                 if id == pairData.jukeboxId then
-                    activeSession = msg.session or (activeSession + 1)
-                    queue = {}
-                    speaker.stop()
-                    redraw("Stopped")
+                    resetPlaybackState(msg.session or (activeSession + 1), "Stopped")
                 end
             end
         end
@@ -229,8 +243,7 @@ end
 local function unpair()
     pairData.jukeboxId = nil
     pairData.jukeboxName = nil
-    queue = {}
-    speaker.stop()
+    resetPlaybackState(0)
     savePairData()
     redraw("Unpaired")
 end
@@ -264,8 +277,7 @@ local function keyboardLoop()
             unpair()
         elseif key == keys.q or key == keys.backspace then
             quitting = true
-            queue = {}
-            speaker.stop()
+            resetPlaybackState(activeSession)
             redraw("Closed")
             return
         end
