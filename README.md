@@ -18,6 +18,14 @@ The Jukebox system is a wireless music player setup for CC: Tweaked with:
 - Wireless multi-speaker playback across your base / house
 - Connected pocket count and speaker count on the jukebox UI
 
+### Jukebox Screenshots
+
+![Jukebox Host](Screenshot/JukeBox/Jukebox_Host.png)
+![Pocket Remote](Screenshot/JukeBox/Pocket_Remote.png)
+![Wireless Speakers](Screenshot/JukeBox/Wireless_Speakers.png)
+![YouTube Search](Screenshot/JukeBox/YT_Search.png)
+![YouTube Results](Screenshot/JukeBox/YT_Results.png)
+
 ## What The Jukebox Has
 
 - Wireless pairing with pocket remotes
@@ -183,6 +191,10 @@ Original code by `0x00sec`, modified by `NekoSuneVR`.
 - version display on startup
 - provider switching
 - support for hosted and selfhosted AI endpoints
+
+### ChatGPT Screenshot
+
+![ChatGPT Terminal](Screenshot/ChatGPT/ChatGPT.png)
 
 ### Supported Providers
 
