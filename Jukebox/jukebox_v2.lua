@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-1"
+local APP_VERSION = "2026.03.11-2"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -77,6 +77,7 @@ local buttonMap = {}
 local uiDirty = true
 local stopPlayback, playSelected, nextSong, prevSong
 local speakerNodes = {}
+local remoteNodes = {}
 
 local function exitApp()
     stopPlayback()
@@ -429,6 +430,35 @@ local function pairRemote(id)
     markDirty()
 end
 
+local function rememberRemoteNode(id, name)
+    if config.pairedRemotes[tostring(id)] ~= true then
+        return
+    end
+
+    remoteNodes[tostring(id)] = {
+        id = id,
+        name = name or ("Pocket-" .. id),
+        seenAt = os.clock()
+    }
+end
+
+local function cleanupRemoteNodes()
+    local now = os.clock()
+    for idStr, node in pairs(remoteNodes) do
+        if now - (node.seenAt or 0) > 15 then
+            remoteNodes[idStr] = nil
+        end
+    end
+end
+
+local function getRemoteCount()
+    local count = 0
+    for _ in pairs(remoteNodes) do
+        count = count + 1
+    end
+    return count
+end
+
 local function handleRemoteCommand(id, msg)
     if not isPairedRemote(id) then
         return
@@ -441,6 +471,8 @@ local function handleRemoteCommand(id, msg)
     if msg.targetId and msg.targetId ~= os.getComputerID() then
         return
     end
+
+    rememberRemoteNode(id, msg.remoteName)
 
     if msg.action == "play" then
         playSelected()
@@ -504,6 +536,7 @@ local function drawUI()
     drawText(2, 2, "Pair:" .. config.pairCode, colors.black, UI.subHeader)
     drawText(math.max(2, w - 16), 2, "Songs:" .. #playlist, colors.black, UI.subHeader)
     drawText(math.max(2, w - 33), 2, "Speakers:" .. getSpeakerCount(), colors.black, UI.subHeader)
+    drawText(math.max(2, w - 47), 2, "Pockets:" .. getRemoteCount(), colors.black, UI.subHeader)
 
     drawFilledLine(3, UI.panelDark)
     drawText(2, 3, "Status:", UI.dim, UI.panelDark)
@@ -780,45 +813,13 @@ local function addSongFromTerminal()
     print("Add Song")
 
     print("")
-    print("1 = Local .dfpwm file")
-    print("2 = Stream URL")
-    print("3 = YouTube search / URL")
+    print("1 = Stream URL")
+    print("2 = YouTube search / URL")
     print("")
     print("Choose mode:")
     local mode = read()
 
     if mode == "1" then
-        print("")
-        print("Song name:")
-        local name = read()
-        if not name or name == "" then
-            markDirty()
-            return
-        end
-
-        print("")
-        print("Enter .dfpwm path:")
-        local path = read()
-
-        if not path or path == "" then
-            markDirty()
-            return
-        end
-
-        if not fs.exists(path) then
-            print("")
-            print("File not found.")
-            sleep(1.5)
-            markDirty()
-            return
-        end
-
-        table.insert(playlist, {
-            name = name,
-            path = path
-        })
-
-    elseif mode == "2" then
         print("")
         print("Song name:")
         local name = read()
@@ -840,7 +841,7 @@ local function addSongFromTerminal()
             name = name,
             url = url
         })
-    elseif mode == "3" then
+    elseif mode == "2" then
         addYoutubeFromTerminal()
         return
     else
@@ -962,6 +963,8 @@ end
 local function uiLoop()
     while true do
         sleep(0.2)
+        cleanupRemoteNodes()
+        cleanupSpeakerNodes()
         if playing then
             uiDirty = true
             drawUI()
@@ -995,6 +998,7 @@ local function rednetLoop()
 
                 if ok then
                     pairRemote(id)
+                    rememberRemoteNode(id, msg.remoteName)
                 end
 
                 rednet.send(id, {
@@ -1030,7 +1034,12 @@ local function rednetLoop()
                 }, PROTOCOL_SPEAKER)
             end
         elseif protocol == PROTOCOL_CONTROL then
-            handleRemoteCommand(id, msg)
+            if type(msg) == "table" and msg.type == "heartbeat" then
+                rememberRemoteNode(id, msg.remoteName)
+                markDirty()
+            else
+                handleRemoteCommand(id, msg)
+            end
         end
     end
 end

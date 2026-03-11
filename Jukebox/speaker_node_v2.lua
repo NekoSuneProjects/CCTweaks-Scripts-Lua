@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-1"
+local APP_VERSION = "2026.03.11-2"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 local DATA_FILE = "/speaker_node_pair.db"

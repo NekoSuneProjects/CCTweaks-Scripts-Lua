@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.11-1"
+local APP_VERSION = "2026.03.11-2"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -10,6 +10,7 @@ if not modem then error("Wireless modem required") end
 rednet.open(peripheral.getName(modem))
 
 local pairData = { targetId=nil, targetName=nil }
+local remoteName = os.getComputerLabel() or ("Pocket-"..os.getComputerID())
 
 local state = {
     playerName="None",
@@ -104,7 +105,8 @@ local function send(action,data)
     local payload={
         type="command",
         targetId=pairData.targetId,
-        action=action
+        action=action,
+        remoteName=remoteName
     }
 
     if data then
@@ -112,6 +114,15 @@ local function send(action,data)
     end
 
     rednet.send(pairData.targetId,payload,PROTOCOL_CONTROL)
+end
+
+local function sendHeartbeat()
+    if not pairData.targetId then return end
+    rednet.send(pairData.targetId,{
+        type="heartbeat",
+        targetId=pairData.targetId,
+        remoteName=remoteName
+    },PROTOCOL_CONTROL)
 end
 
 ------------------------------------------------
@@ -158,40 +169,49 @@ end
 ------------------------------------------------
 
 local function pairMenu()
-
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
     term.clear()
     term.setCursorPos(1,1)
-
-    print("Scanning...")
+    print("Pair Pocket Remote")
+    print("")
+    print("Scanning for jukeboxes...")
 
     local list=discover()
 
     if #list==0 then
+        print("")
         print("No jukebox found")
         sleep(2)
         return
     end
 
     term.clear()
+    term.setCursorPos(1,1)
+    print("Pair Pocket Remote")
+    print("")
 
     for i,v in ipairs(list) do
         print(i..") "..v.name.." ["..v.id.."]")
     end
 
     print("")
-    print("Choose number:")
+    print("Choose computer number:")
 
     local n=tonumber(read())
     if not list[n] then return end
 
+    print("")
     print("Enter Pair Code:")
     local code=trim(read())
 
     rednet.send(list[n].id,{
         type="pair_request",
+        remoteName=remoteName,
         code=code
     },PROTOCOL_DISCOVERY)
 
+    print("")
     print("Pairing...")
 
     local deadline=os.clock()+4
@@ -216,6 +236,7 @@ local function pairMenu()
         pairData.targetName=list[n].name
         save()
         state.playerName=list[n].name
+        print("")
         print("Paired with "..list[n].name)
         rednet.send(pairData.targetId,{
             type="command",
@@ -230,6 +251,7 @@ local function pairMenu()
         elseif not replyId then
             reason="No pair reply from jukebox"
         end
+        print("")
         print(reason)
         sleep(2)
     end
@@ -378,7 +400,14 @@ local function uiLoop()
     end
 end
 
+local function heartbeatLoop()
+    while true do
+        sleep(5)
+        sendHeartbeat()
+    end
+end
+
 ------------------------------------------------
 
 load()
-parallel.waitForAny(uiLoop)
+parallel.waitForAny(uiLoop,heartbeatLoop)
