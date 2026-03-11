@@ -212,6 +212,11 @@ local function broadcastStateToPaired()
     end
 end
 
+local function trim(value)
+    value = tostring(value or "")
+    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 local function queueSpeakerDiscovery()
     rednet.broadcast({ type = "discover_speakers" }, PROTOCOL_SPEAKER)
 end
@@ -940,7 +945,7 @@ local function rednetLoop()
                     playerName = config.playerName,
                 }, PROTOCOL_DISCOVERY)
             elseif msg.type == "pair_request" then
-                local ok = tostring(msg.code or "") == config.pairCode
+                local ok = trim(msg.code) == trim(config.pairCode)
 
                 if ok then
                     pairRemote(id)

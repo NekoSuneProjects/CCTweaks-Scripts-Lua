@@ -40,6 +40,11 @@ local function showMessage(lines,pause)
     end
 end
 
+local function trim(s)
+    s=tostring(s or "")
+    return (s:gsub("^%s+",""):gsub("%s+$",""))
+end
+
 ------------------------------------------------
 -- FILE SAVE / LOAD
 ------------------------------------------------
@@ -179,27 +184,52 @@ local function pairMenu()
     if not list[n] then return end
 
     print("Enter Pair Code:")
-    local code=read()
+    local code=trim(read())
 
     rednet.send(list[n].id,{
         type="pair_request",
         code=code
     },PROTOCOL_DISCOVERY)
 
-    local replyId,msg,prot=rednet.receive(PROTOCOL_DISCOVERY,3)
+    print("Pairing...")
+
+    local deadline=os.clock()+4
+    local replyId,msg,prot=nil,nil,nil
+
+    while os.clock()<deadline do
+        local remaining=math.max(0,deadline-os.clock())
+        local rid,rmsg,rprot=rednet.receive(PROTOCOL_DISCOVERY,remaining)
+
+        if not rid then
+            break
+        end
+
+        if rprot==PROTOCOL_DISCOVERY and rid==list[n].id and type(rmsg)=="table" and rmsg.type=="pair_reply" then
+            replyId,msg,prot=rid,rmsg,rprot
+            break
+        end
+    end
 
     if prot==PROTOCOL_DISCOVERY and replyId==list[n].id and type(msg)=="table" and msg.type=="pair_reply" and msg.ok then
         pairData.targetId=list[n].id
         pairData.targetName=list[n].name
         save()
         state.playerName=list[n].name
+        print("Paired with "..list[n].name)
         rednet.send(pairData.targetId,{
             type="command",
             targetId=pairData.targetId,
             action="request_state"
         },PROTOCOL_CONTROL)
+        sleep(1)
     else
-        print(msg and msg.reason or "Pairing failed")
+        local reason="Pairing failed"
+        if type(msg)=="table" and msg.reason and msg.reason~="" then
+            reason=msg.reason
+        elseif not replyId then
+            reason="No pair reply from jukebox"
+        end
+        print(reason)
         sleep(2)
     end
 end
