@@ -171,3 +171,129 @@ On boot:
 
 - Live radio support is not fully tested yet
 - MP3 live radio to DFPWM relay support should be treated as experimental until more testing is done
+
+## ChatGPT
+
+Original code by `0x00sec`, modified by `NekoSuneVR`.
+
+`ChatGPT` is a ComputerCraft / CC: Tweaked terminal AI client with:
+
+- local conversation saves
+- boot-time auto update
+- version display on startup
+- provider switching
+- support for hosted and selfhosted AI endpoints
+
+### Supported Providers
+
+- Ollama
+- OpenAI
+- Google AI
+- Grok AI / xAI
+- Anthropic
+- Groq
+- OpenRouter
+- DeepSeek
+- Mistral
+- Together
+- LiteLLM selfhosted
+- LM Studio
+- LocalAI
+- vLLM
+
+### ChatGPT Files
+
+- `ChatGPT/ctos_chatgpt_v1.lua`
+- `ChatGPT/startup_ctos.lua`
+- `ChatGPT/install_ctos.lua`
+
+### Install ChatGPT
+
+```lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/ChatGPT/install_ctos.lua
+```
+
+What it does:
+
+- installs `/ctos_chatgpt_v1.lua`
+- installs `/startup.lua`
+- checks for updates on every boot
+- shows the current version on boot
+- starts CTOS automatically
+
+### ChatGPT Commands
+
+Commands can be used with or without `/`.
+
+- `help`
+- `status`
+- `providers`
+- `providers list`
+- `providers use ollama`
+- `providers use openai`
+- `providers use google`
+- `providers use grok`
+- `providers use litellm`
+- `settings list`
+- `settings set apiKey YOUR_KEY`
+- `settings set host http://127.0.0.1:4000`
+- `settings set model llama3.2`
+- `save`
+- `load`
+- `new`
+- `exit`
+
+### ChatGPT Setup Examples
+
+Ollama:
+
+```text
+/providers use ollama
+/settings set host http://127.0.0.1:11434
+/settings set model llama3.2
+/status
+```
+
+Remote Ollama:
+
+```text
+/providers use ollama
+/settings set host http://HOSTIP:11434
+/settings set model llama3.2
+/status
+```
+
+OpenAI:
+
+```text
+/providers use openai
+/settings set apiKey YOUR_API_KEY
+/settings set model gpt-4o-mini
+/status
+```
+
+Google AI:
+
+```text
+/providers use google
+/settings set apiKey YOUR_API_KEY
+/settings set model gemini-2.0-flash
+/status
+```
+
+LiteLLM:
+
+```text
+/providers use litellm
+/settings set host http://127.0.0.1:4000
+/settings set apiKey YOUR_API_KEY
+/settings set model gpt-4o-mini
+/status
+```
+
+### Notes For ChatGPT
+
+- `providers use ...` is a local command and should not be sent to the AI
+- LiteLLM, LM Studio, LocalAI, and vLLM use OpenAI-compatible APIs
+- Ollama does not require an API key by default
+- `apiKey` is privacy-masked in CTOS status/settings output, so it does not print the full secret on screen

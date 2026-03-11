@@ -7,7 +7,7 @@ Code Created by 0x00sec but modified by NekoSuneVR
 ]]
 
 local APP_NAME = "CTOS"
-local APP_VERSION = "2026.03.11-1"
+local APP_VERSION = "2026.03.11-2"
 local SETTINGS_PREFIX = "ctos."
 
 local Utility = {}
@@ -630,7 +630,7 @@ local function main()
         local userInput = Utility.trim(read())
         local firstToken = Utility.split(userInput)[1]
         local firstTokenLower = firstToken and firstToken:lower() or nil
-        if userInput ~= "" and (Utility.starts_with(userInput, "/") or firstTokenLower == "ctos") then
+        if userInput ~= "" and (Utility.starts_with(userInput, "/") or firstTokenLower == "ctos" or Commands[firstTokenLower] ~= nil) then
             local commandText = Utility.starts_with(userInput, "/") and userInput:sub(2) or userInput
             local parts = Utility.split(commandText)
             local commandName = parts[1] and parts[1]:lower() or nil
