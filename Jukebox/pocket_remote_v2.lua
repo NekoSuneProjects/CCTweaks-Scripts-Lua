@@ -1,6 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
+local APP_VERSION = "2026.03.11-1"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -253,7 +254,7 @@ local function draw()
     term.setTextColor(colors.black)
     term.write(string.rep(" ",w))
     term.setCursorPos(2,1)
-    term.write("Pocket Jukebox")
+    term.write("Pocket Jukebox v"..APP_VERSION)
 
     term.setBackgroundColor(colors.black)
 

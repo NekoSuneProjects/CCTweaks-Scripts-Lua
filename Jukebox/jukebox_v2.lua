@@ -1,4 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
+local APP_VERSION = "2026.03.11-1"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -478,6 +479,7 @@ local function drawUI()
 
     drawFilledLine(1, UI.header)
     drawText(2, 1, trimText("? " .. config.playerName, math.max(1, w - 16)), colors.black, UI.header)
+    drawText(math.max(2, w - 24), 1, "v" .. APP_VERSION, colors.black, UI.header)
     drawText(math.max(2, w - 10), 1, "ID:" .. os.getComputerID(), colors.black, UI.header)
 
     drawFilledLine(2, UI.subHeader)

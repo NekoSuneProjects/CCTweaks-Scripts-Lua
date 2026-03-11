@@ -1,4 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
+local APP_VERSION = "2026.03.11-1"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 
@@ -22,7 +23,7 @@ local function redraw(status)
     term.setTextColor(colors.white)
     term.clear()
     term.setCursorPos(1, 1)
-    print("Wireless Speaker Node")
+    print("Wireless Speaker Node v" .. APP_VERSION)
     print("ID: " .. os.getComputerID())
     print("Status: " .. status)
     print("Queue: " .. #queue)

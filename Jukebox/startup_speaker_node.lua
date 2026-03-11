@@ -3,6 +3,14 @@ local APP_PATH = "/speaker_node_v2.lua"
 local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/speaker_node_v2.lua"
 local SKIP_DELAY = 3
 
+local function extractVersion(data)
+    if not data then
+        return "unknown"
+    end
+
+    return data:match('local APP_VERSION = "([^"]+)"') or "unknown"
+end
+
 local function readFile(path)
     if not fs.exists(path) then
         return nil
@@ -46,12 +54,16 @@ end
 local function updateApp()
     local remote = download(APP_URL)
     local localData = readFile(APP_PATH)
+    local localVersion = extractVersion(localData)
+    local remoteVersion = extractVersion(remote)
 
     if localData ~= remote then
         writeFile(APP_PATH, remote)
-        print("Updated " .. APP_NAME)
+        print("Updated " .. APP_NAME .. " " .. localVersion .. " -> " .. remoteVersion)
+        return remoteVersion
     else
-        print(APP_NAME .. " is current")
+        print(APP_NAME .. " current v" .. localVersion)
+        return localVersion
     end
 end
 
@@ -108,13 +120,18 @@ if waitForSkip() then
     return
 end
 
-local ok, err = pcall(updateApp)
+local currentVersion = "unknown"
+local ok, versionOrErr = pcall(updateApp)
 if not ok then
-    print("Update check failed: " .. tostring(err))
+    print("Update check failed: " .. tostring(versionOrErr))
+else
+    currentVersion = versionOrErr or currentVersion
 end
 
 if not fs.exists(APP_PATH) then
     error("Missing app file: " .. APP_PATH)
 end
 
+print("Running v" .. currentVersion)
+sleep(1)
 runApp()
