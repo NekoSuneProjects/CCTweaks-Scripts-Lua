@@ -3,11 +3,14 @@ local dfpwm = require("cc.audio.dfpwm")
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
+local PROTOCOL_SPEAKER   = "jukebox_v2_speaker"
 
 local DATA_DIR      = "/jukebox_v2"
 local MUSIC_DIR     = "/disk/music"
 local PLAYLIST_FILE = fs.combine(DATA_DIR, "playlist.db")
 local CONFIG_FILE   = fs.combine(DATA_DIR, "config.db")
+local API_BASE_URL  = "https://ipod-2to6magyna-uc.a.run.app/"
+local API_VERSION   = "2.1"
 
 local monitor = peripheral.find("monitor")
 local speaker = peripheral.find("speaker")
@@ -65,10 +68,12 @@ local playing = false
 local stopRequested = false
 local version = 0
 local lastProgressTick = os.clock()
+local playSession = 0
 
 local buttonMap = {}
 local uiDirty = true
 local stopPlayback, playSelected, nextSong, prevSong
+local speakerNodes = {}
 
 local function exitApp()
     stopPlayback()
@@ -207,6 +212,184 @@ local function broadcastStateToPaired()
     end
 end
 
+local function queueSpeakerDiscovery()
+    rednet.broadcast({ type = "discover_speakers" }, PROTOCOL_SPEAKER)
+end
+
+local function rememberSpeakerNode(id, name)
+    speakerNodes[tostring(id)] = {
+        id = id,
+        name = name or ("Speaker-" .. id),
+        seenAt = os.clock()
+    }
+end
+
+local function getSpeakerCount()
+    local count = 0
+    for _ in pairs(speakerNodes) do
+        count = count + 1
+    end
+    return count
+end
+
+local function cleanupSpeakerNodes()
+    local now = os.clock()
+    for idStr, node in pairs(speakerNodes) do
+        if now - (node.seenAt or 0) > 60 then
+            speakerNodes[idStr] = nil
+        end
+    end
+end
+
+local function buildApiUrl(params)
+    local out = API_BASE_URL .. "?v=" .. textutils.urlEncode(API_VERSION)
+    for key, value in pairs(params) do
+        out = out .. "&" .. textutils.urlEncode(key) .. "=" .. textutils.urlEncode(tostring(value))
+    end
+    return out
+end
+
+local function fetchJson(url)
+    if not http then
+        return nil, "HTTP API is disabled"
+    end
+
+    local response, err = http.get(url, nil, true)
+    if not response then
+        return nil, tostring(err or "Request failed")
+    end
+
+    local raw = response.readAll()
+    response.close()
+
+    local data = textutils.unserialiseJSON(raw)
+    if type(data) ~= "table" then
+        return nil, "Invalid JSON response"
+    end
+
+    return data
+end
+
+local function normalizeYoutubeItem(item)
+    if type(item) ~= "table" then
+        return nil
+    end
+
+    if type(item.id) ~= "string" or item.id == "" then
+        return nil
+    end
+
+    return {
+        name = item.name or item.title or "Unknown",
+        artist = item.artist or item.channel or "YouTube",
+        ytId = item.id,
+        source = "youtube"
+    }
+end
+
+local function addYoutubeEntries(results, index)
+    local chosen = results[index]
+    if not chosen then
+        return false, "Invalid selection"
+    end
+
+    local added = 0
+
+    if chosen.type == "playlist" and type(chosen.playlist_items) == "table" then
+        for _, item in ipairs(chosen.playlist_items) do
+            local entry = normalizeYoutubeItem(item)
+            if entry then
+                table.insert(playlist, entry)
+                added = added + 1
+            end
+        end
+    else
+        local entry = normalizeYoutubeItem(chosen)
+        if entry then
+            table.insert(playlist, entry)
+            added = 1
+        end
+    end
+
+    if added == 0 then
+        return false, "Nothing addable in result"
+    end
+
+    savePlaylist()
+    selectedIndex = #playlist
+    currentIndex = selectedIndex
+    markDirty()
+    broadcastStateToPaired()
+    return true, added
+end
+
+local function addYoutubeFromTerminal()
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("YouTube Search / Link")
+    print("")
+    print("Enter search text or YouTube URL:")
+    local query = read()
+
+    if not query or query == "" then
+        markDirty()
+        return
+    end
+
+    print("")
+    print("Searching...")
+
+    local results, err = fetchJson(buildApiUrl({ search = query }))
+    if not results then
+        print("")
+        print("Search failed: " .. err)
+        sleep(2)
+        markDirty()
+        return
+    end
+
+    if #results == 0 then
+        print("")
+        print("No results")
+        sleep(1.5)
+        markDirty()
+        return
+    end
+
+    term.clear()
+    term.setCursorPos(1, 1)
+    print("YouTube Results")
+    print("")
+
+    for i, item in ipairs(results) do
+        local kind = item.type == "playlist" and "[LIST]" or "[YT]"
+        local artist = item.artist or item.channel or "YouTube"
+        print(string.format("%d) %s %s", i, kind, item.name or item.title or "Unknown"))
+        print("   " .. artist)
+        if i >= 8 then
+            break
+        end
+    end
+
+    print("")
+    print("Choose number:")
+    local pick = tonumber(read())
+    local ok, info = addYoutubeEntries(results, pick)
+
+    if ok then
+        print("")
+        print("Added " .. tostring(info) .. " track(s)")
+    else
+        print("")
+        print("Add failed: " .. tostring(info))
+    end
+
+    sleep(1.5)
+end
+
 local function sendStateToRemote(id)
     rednet.send(id, getStatePayload(), PROTOCOL_STATE)
 end
@@ -294,6 +477,7 @@ local function drawUI()
     drawFilledLine(2, UI.subHeader)
     drawText(2, 2, "Pair:" .. config.pairCode, colors.black, UI.subHeader)
     drawText(math.max(2, w - 16), 2, "Songs:" .. #playlist, colors.black, UI.subHeader)
+    drawText(math.max(2, w - 33), 2, "Speakers:" .. getSpeakerCount(), colors.black, UI.subHeader)
 
     drawFilledLine(3, UI.panelDark)
     drawText(2, 3, "Status:", UI.dim, UI.panelDark)
@@ -363,7 +547,12 @@ local function drawUI()
             monitor.setTextColor(fg)
             monitor.setCursorPos(2, y)
 
-            local sourceTag = playlist[idx].url and "[URL] " or "[FILE] "
+            local sourceTag = "[FILE] "
+            if playlist[idx].ytId then
+                sourceTag = "[YT] "
+            elseif playlist[idx].url then
+                sourceTag = "[URL] "
+            end
             local line = string.format("%02d %s%s", idx, sourceTag, playlist[idx].name or "Unknown")
             monitor.write(trimText(line, math.max(1, w - 2)))
 
@@ -400,17 +589,52 @@ local function playBuffer(buffer)
     end
 end
 
+local function broadcastSpeakerChunk(chunk)
+    cleanupSpeakerNodes()
+    for idStr, node in pairs(speakerNodes) do
+        local ok = rednet.send(tonumber(idStr), {
+            type = "audio_chunk",
+            session = playSession,
+            chunk = chunk,
+        }, PROTOCOL_SPEAKER)
+
+        if not ok then
+            speakerNodes[idStr] = nil
+        else
+            node.seenAt = os.clock()
+        end
+    end
+end
+
+local function stopSpeakerNodes()
+    for idStr in pairs(speakerNodes) do
+        rednet.send(tonumber(idStr), {
+            type = "stop",
+            session = playSession,
+        }, PROTOCOL_SPEAKER)
+    end
+end
+
 local function playTrack(song)
     local decoder = dfpwm.make_decoder()
     stopRequested = false
+    playSession = playSession + 1
     nowPlaying = song.name or "Unknown"
     statusText = "Playing"
     lastProgressTick = os.clock()
     markDirty()
     broadcastStateToPaired()
+    queueSpeakerDiscovery()
 
-    if song.url then
-        local response = http.get(song.url, nil, true)
+    local streamUrl = nil
+    if song.ytId then
+        streamUrl = buildApiUrl({ id = song.ytId })
+    elseif song.url then
+        streamUrl = song.url
+    end
+
+    if streamUrl then
+        local response = http.get(streamUrl, nil, true)
 
         if not response then
             statusText = "Stream failed"
@@ -427,6 +651,7 @@ local function playTrack(song)
             local chunk = response.read(16 * 1024)
             if not chunk then break end
 
+            broadcastSpeakerChunk(chunk)
             local buffer = decoder(chunk)
             playBuffer(buffer)
 
@@ -461,6 +686,7 @@ local function playTrack(song)
             local chunk = file.read(16 * 1024)
             if not chunk then break end
 
+            broadcastSpeakerChunk(chunk)
             local buffer = decoder(chunk)
             playBuffer(buffer)
 
@@ -478,6 +704,7 @@ local function playTrack(song)
     end
 
     speaker.stop()
+    stopSpeakerNodes()
 
     if stopRequested then return end
 
@@ -497,22 +724,24 @@ local function addSongFromTerminal()
     term.setCursorPos(1, 1)
 
     print("Add Song")
-    print("")
-    print("Song name:")
-    local name = read()
-    if not name or name == "" then
-        markDirty()
-        return
-    end
 
     print("")
     print("1 = Local .dfpwm file")
     print("2 = Stream URL")
+    print("3 = YouTube search / URL")
     print("")
     print("Choose mode:")
     local mode = read()
 
     if mode == "1" then
+        print("")
+        print("Song name:")
+        local name = read()
+        if not name or name == "" then
+            markDirty()
+            return
+        end
+
         print("")
         print("Enter .dfpwm path:")
         local path = read()
@@ -537,6 +766,14 @@ local function addSongFromTerminal()
 
     elseif mode == "2" then
         print("")
+        print("Song name:")
+        local name = read()
+        if not name or name == "" then
+            markDirty()
+            return
+        end
+
+        print("")
         print("Enter stream URL:")
         local url = read()
 
@@ -549,6 +786,9 @@ local function addSongFromTerminal()
             name = name,
             url = url
         })
+    elseif mode == "3" then
+        addYoutubeFromTerminal()
+        return
     else
         print("")
         print("Invalid mode.")
@@ -567,6 +807,8 @@ end
 stopPlayback = function()
     stopRequested = true
     speaker.stop()
+    playSession = playSession + 1
+    stopSpeakerNodes()
     playing = false
     statusText = "Stopped"
     nowPlaying = "Nothing"
@@ -715,6 +957,11 @@ local function rednetLoop()
                 if ok then
                     sendStateToRemote(id)
                 end
+            end
+        elseif protocol == PROTOCOL_SPEAKER and type(msg) == "table" then
+            if msg.type == "speaker_hello" then
+                rememberSpeakerNode(id, msg.name)
+                markDirty()
             end
         elseif protocol == PROTOCOL_CONTROL then
             handleRemoteCommand(id, msg)
