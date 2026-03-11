@@ -69,6 +69,7 @@ local stopRequested = false
 local version = 0
 local lastProgressTick = os.clock()
 local playSession = 0
+local playRequestId = 0
 
 local buttonMap = {}
 local uiDirty = true
@@ -582,18 +583,6 @@ local function drawUI()
     addButton("pair",   x, by, x + 8, by + 1, UI.buttonPair,   colors.black, "NewCode")
 end
 
-local function playBuffer(buffer)
-    while not speaker.playAudio(buffer) do
-        local ev = { os.pullEvent() }
-        if ev[1] == "speaker_audio_empty" then
-            -- continue
-        elseif ev[1] == "jukebox_restart_now" or ev[1] == "jukebox_stop_now" then
-            stopRequested = true
-            break
-        end
-    end
-end
-
 local function broadcastSpeakerChunk(chunk)
     cleanupSpeakerNodes()
     for idStr, node in pairs(speakerNodes) do
@@ -620,8 +609,43 @@ local function stopSpeakerNodes()
     end
 end
 
+local function interruptPlayback()
+    playRequestId = playRequestId + 1
+    stopRequested = true
+    speaker.stop()
+    stopSpeakerNodes()
+    os.queueEvent("jukebox_interrupt", playRequestId)
+end
+
+local function playBuffer(buffer, requestId)
+    while not speaker.playAudio(buffer) do
+        os.pullEvent()
+        if playRequestId ~= requestId or stopRequested then
+            return false
+        end
+    end
+
+    return playRequestId == requestId and not stopRequested
+end
+
+local function waitForPlaybackDrain(requestId)
+    while playRequestId == requestId and not stopRequested do
+        local ev = { os.pullEvent() }
+        if playRequestId ~= requestId or stopRequested then
+            return false
+        end
+
+        if ev[1] == "speaker_audio_empty" then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function playTrack(song)
     local decoder = dfpwm.make_decoder()
+    local requestId = playRequestId
     stopRequested = false
     playSession = playSession + 1
     nowPlaying = song.name or "Unknown"
@@ -651,16 +675,16 @@ local function playTrack(song)
         end
 
         while true do
-            if stopRequested then break end
+            if stopRequested or playRequestId ~= requestId then break end
 
             local chunk = response.read(16 * 1024)
             if not chunk then break end
 
             broadcastSpeakerChunk(chunk)
             local buffer = decoder(chunk)
-            playBuffer(buffer)
+            if not playBuffer(buffer, requestId) then break end
 
-            if stopRequested then break end
+            if stopRequested or playRequestId ~= requestId then break end
         end
 
         response.close()
@@ -686,16 +710,16 @@ local function playTrack(song)
         end
 
         while true do
-            if stopRequested then break end
+            if stopRequested or playRequestId ~= requestId then break end
 
             local chunk = file.read(16 * 1024)
             if not chunk then break end
 
             broadcastSpeakerChunk(chunk)
             local buffer = decoder(chunk)
-            playBuffer(buffer)
+            if not playBuffer(buffer, requestId) then break end
 
-            if stopRequested then break end
+            if stopRequested or playRequestId ~= requestId then break end
         end
 
         file.close()
@@ -708,10 +732,15 @@ local function playTrack(song)
         return
     end
 
-    speaker.stop()
-    stopSpeakerNodes()
+    if stopRequested or playRequestId ~= requestId then
+        return
+    end
 
-    if stopRequested then return end
+    waitForPlaybackDrain(requestId)
+
+    if stopRequested or playRequestId ~= requestId then
+        return
+    end
 
     if playing and #playlist > 0 then
         currentIndex = currentIndex + 1
@@ -810,31 +839,29 @@ local function addSongFromTerminal()
 end
 
 stopPlayback = function()
-    stopRequested = true
-    speaker.stop()
+    interruptPlayback()
     playSession = playSession + 1
-    stopSpeakerNodes()
     playing = false
     statusText = "Stopped"
     nowPlaying = "Nothing"
     markDirty()
     broadcastStateToPaired()
-    os.queueEvent("jukebox_stop_now")
 end
 
 playSelected = function()
     if #playlist == 0 then return end
+    interruptPlayback()
     currentIndex = selectedIndex
     playing = true
     statusText = "Starting"
     lastProgressTick = os.clock()
     markDirty()
     broadcastStateToPaired()
-    os.queueEvent("jukebox_restart_now")
 end
 
 nextSong = function()
     if #playlist == 0 then return end
+    interruptPlayback()
     currentIndex = currentIndex + 1
     clampIndices()
     selectedIndex = currentIndex
@@ -843,11 +870,11 @@ nextSong = function()
     lastProgressTick = os.clock()
     markDirty()
     broadcastStateToPaired()
-    os.queueEvent("jukebox_restart_now")
 end
 
 prevSong = function()
     if #playlist == 0 then return end
+    interruptPlayback()
     currentIndex = currentIndex - 1
     clampIndices()
     selectedIndex = currentIndex
@@ -856,7 +883,6 @@ prevSong = function()
     lastProgressTick = os.clock()
     markDirty()
     broadcastStateToPaired()
-    os.queueEvent("jukebox_restart_now")
 end
 
 local function audioLoop()
