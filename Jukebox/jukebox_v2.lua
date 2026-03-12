@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-8"
+local APP_VERSION = "2026.03.12-9"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -1155,7 +1155,7 @@ local function broadcastSpeakerChunk(chunk)
     end
 end
 
-local function stopSpeakerNodes()
+stopSpeakerNodes = function()
     for idStr in pairs(speakerNodes) do
         rednet.send(tonumber(idStr), {
             type = "stop",
@@ -1164,7 +1164,7 @@ local function stopSpeakerNodes()
     end
 end
 
-local function stopLocalSpeakers()
+stopLocalSpeakers = function()
     for _, localSpeaker in ipairs(localSpeakers) do
         localSpeaker.stop()
     end
