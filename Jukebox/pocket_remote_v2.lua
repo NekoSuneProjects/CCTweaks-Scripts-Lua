@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-5"
+local APP_VERSION = "2026.03.12-6"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -25,9 +25,11 @@ local state = {
     remoteList={},
     speakers={},
     speakerCount=0,
+    onlineSpeakerCount=0,
     brokenSpeakerCount=0,
     online=false,
     volume=1,
+    localSpeakerCount=0,
 }
 
 local buttons={}
@@ -341,12 +343,7 @@ local function draw()
     print("Role: "..(state.remoteRole or "guest").." Vol:"..string.format("%.1f", tonumber(state.volume) or 1))
 
     term.setCursorPos(1,8)
-    local onlineSpeakers=0
-    for _,item in ipairs(state.speakers or {}) do
-        if item.status ~= "Offline" then
-            onlineSpeakers=onlineSpeakers+1
-        end
-    end
+    local onlineSpeakers=tonumber(state.onlineSpeakerCount) or 0
     print("Spk: "..tostring(onlineSpeakers).."/"..tostring(state.speakerCount or 0).." Broken:"..tostring(state.brokenSpeakerCount or 0))
 
     term.setCursorPos(1,9)
@@ -499,6 +496,7 @@ local function showSpeakerInfo()
         for i,item in ipairs(state.speakers) do
             print(string.format("%d) %s [%d]",i,item.name or "Speaker",item.id or 0))
             print("   "..tostring(item.status or "Waiting").." Q:"..tostring(item.queueSize or 0).." Broken:"..tostring(item.stuck==true))
+            print("   v"..tostring(item.version or "?"))
         end
 
         if isAdmin() then

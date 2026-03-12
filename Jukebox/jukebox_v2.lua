@@ -14,13 +14,21 @@ local API_BASE_URL  = "https://ipod-2to6magyna-uc.a.run.app/"
 local API_VERSION   = "2.1"
 
 local monitor = peripheral.find("monitor")
-local speaker = peripheral.find("speaker")
 local modemName = peripheral.find("modem", function(name, modem)
     return modem.isWireless == nil or modem.isWireless()
 end)
+local localSpeakerNames = {}
+local localSpeakers = {}
+
+for _, name in ipairs(peripheral.getNames()) do
+    if peripheral.getType(name) == "speaker" then
+        localSpeakerNames[#localSpeakerNames + 1] = name
+        localSpeakers[#localSpeakers + 1] = peripheral.wrap(name)
+    end
+end
 
 if not monitor then error("No monitor attached.") end
-if not speaker then error("No speaker attached.") end
+if #localSpeakers == 0 then error("No speaker attached.") end
 if not modemName then error("No modem attached.") end
 
 rednet.open(peripheral.getName(modemName))
@@ -81,15 +89,18 @@ local uiDirty = true
 local stopPlayback, playSelected, nextSong, prevSong
 local deleteSelectedSong, addSongEntry
 local getRemoteRole, getRemoteList, getBrokenSpeakerCount
+local getSpeakerCount, getExpectedSpeakerCount
 local broadcastStateToPaired
 local speakerNodes = {}
 local remoteNodes = {}
 local listScroll = 1
 local lastSpeakerRestartAt = 0
+local lastSpeakerDiscoveryAt = 0
 local SPEAKER_STALE_SECONDS = 10
 local SPEAKER_BROKEN_QUEUE = 1
 local SPEAKER_AUTO_RESTART_SECONDS = 3
 local SPEAKER_RESTART_COOLDOWN = 8
+local SPEAKER_DISCOVERY_INTERVAL = 5
 
 local function exitApp()
     stopPlayback()
@@ -268,6 +279,7 @@ local function getStatePayload(targetId)
             stuck = node.stuck == true,
             status = node.status or "Waiting",
             lastSeenAge = math.floor(os.clock() - (node.lastStatusAt or node.seenAt or os.clock())),
+            version = node.version,
         }
     end
 
@@ -293,10 +305,12 @@ local function getStatePayload(targetId)
         remoteRole = targetId and getRemoteRole(targetId) or "guest",
         remoteList = getRemoteList(),
         speakers = speakers,
-        speakerCount = getSpeakerCount(),
+        speakerCount = getExpectedSpeakerCount(),
+        onlineSpeakerCount = getSpeakerCount(),
         brokenSpeakerCount = getBrokenSpeakerCount(),
         online = true,
         volume = config.volume,
+        localSpeakerCount = #localSpeakers,
     }
 end
 
@@ -323,17 +337,18 @@ local function rememberSpeakerNode(id, name)
         return
     end
 
-    speakerNodes[tostring(id)] = {
-        id = id,
-        name = name or ("Speaker-" .. id),
-        seenAt = os.clock(),
-        lastStatusAt = os.clock(),
-        lastChunkAt = 0,
-        queueSize = 0,
-        stuck = false,
-        status = "Waiting",
-        brokenSince = nil,
-    }
+    local key = tostring(id)
+    local node = speakerNodes[key] or {}
+    node.id = id
+    node.name = name or node.name or ("Speaker-" .. id)
+    node.seenAt = os.clock()
+    node.lastStatusAt = os.clock()
+    node.lastChunkAt = node.lastChunkAt or 0
+    node.queueSize = node.queueSize or 0
+    node.stuck = false
+    node.status = node.status == "Restarting" and "Restarting" or "Waiting"
+    node.brokenSince = nil
+    speakerNodes[key] = node
 end
 
 local function pairSpeakerNode(id)
@@ -342,12 +357,24 @@ local function pairSpeakerNode(id)
     markDirty()
 end
 
-local function getSpeakerCount()
+local function getPairedSpeakerCount()
     local count = 0
+    for _ in pairs(config.pairedSpeakers) do
+        count = count + 1
+    end
+    return count
+end
+
+getSpeakerCount = function()
+    local count = #localSpeakers
     for _ in pairs(speakerNodes) do
         count = count + 1
     end
     return count
+end
+
+getExpectedSpeakerCount = function()
+    return #localSpeakers + getPairedSpeakerCount()
 end
 
 getBrokenSpeakerCount = function()
@@ -425,6 +452,7 @@ local function noteSpeakerStatus(id, msg)
     node.status = tostring(msg.status or node.status or "Waiting")
     node.lastChunkAt = tonumber(msg.lastChunkAt) or node.lastChunkAt or 0
     node.volume = tonumber(msg.volume) or node.volume or config.volume
+    node.version = tostring(msg.version or node.version or "?")
     node.online = true
 
     if node.queueSize > SPEAKER_BROKEN_QUEUE then
@@ -439,12 +467,19 @@ end
 local function restartSpeakerNodes(reason)
     lastSpeakerRestartAt = os.clock()
     stopSpeakerNodes()
-    for idStr in pairs(speakerNodes) do
+    for idStr in pairs(config.pairedSpeakers) do
         rednet.send(tonumber(idStr), {
             type = "restart",
             session = playSession,
             reason = reason or "manual",
         }, PROTOCOL_SPEAKER)
+
+        local node = speakerNodes[idStr]
+        if node then
+            node.status = "Restarting"
+            node.stuck = false
+            node.brokenSince = nil
+        end
     end
     queueSpeakerDiscovery()
     statusText = "Restarting speakers"
@@ -484,6 +519,22 @@ local function autoRecoverSpeakers()
             restartSpeakerNodes("auto-recover")
             return
         end
+    end
+end
+
+local function keepSpeakerLinksAlive()
+    local now = os.clock()
+    if now - lastSpeakerDiscoveryAt < SPEAKER_DISCOVERY_INTERVAL then
+        return
+    end
+
+    if getPairedSpeakerCount() == 0 then
+        return
+    end
+
+    if getSpeakerCount() < getExpectedSpeakerCount() or playing then
+        lastSpeakerDiscoveryAt = now
+        queueSpeakerDiscovery()
     end
 end
 
@@ -1090,19 +1141,27 @@ local function stopSpeakerNodes()
     end
 end
 
+local function stopLocalSpeakers()
+    for _, localSpeaker in ipairs(localSpeakers) do
+        localSpeaker.stop()
+    end
+end
+
 local function interruptPlayback()
     playRequestId = playRequestId + 1
     stopRequested = true
-    speaker.stop()
+    stopLocalSpeakers()
     stopSpeakerNodes()
     os.queueEvent("jukebox_interrupt", playRequestId)
 end
 
 local function playBuffer(buffer, requestId)
-    while not speaker.playAudio(buffer, config.volume) do
-        os.pullEvent()
-        if playRequestId ~= requestId or stopRequested then
-            return false
+    for _, localSpeaker in ipairs(localSpeakers) do
+        while not localSpeaker.playAudio(buffer, config.volume) do
+            os.pullEvent()
+            if playRequestId ~= requestId or stopRequested then
+                return false
+            end
         end
     end
 
@@ -1416,6 +1475,7 @@ local function uiLoop()
         cleanupRemoteNodes()
         cleanupSpeakerNodes()
         autoRecoverSpeakers()
+        keepSpeakerLinksAlive()
         if playing then
             uiDirty = true
             drawUI()
@@ -1502,4 +1562,5 @@ end
 loadData()
 clampIndices()
 markDirty()
+queueSpeakerDiscovery()
 parallel.waitForAny(audioLoop, monitorLoop, uiLoop, rednetLoop, keyboardLoop)

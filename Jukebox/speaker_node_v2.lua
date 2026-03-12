@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-5"
+local APP_VERSION = "2026.03.12-6"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 local DATA_FILE = "/speaker_node_pair.db"
@@ -26,6 +26,17 @@ local pairData = {
     jukeboxId = nil,
     jukeboxName = nil,
 }
+
+local function sendHello()
+    if not pairData.jukeboxId then
+        return
+    end
+
+    rednet.send(pairData.jukeboxId, {
+        type = "speaker_hello",
+        name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
+    }, PROTOCOL_SPEAKER)
+end
 
 local function savePairData()
     local handle = fs.open(DATA_FILE, "w")
@@ -118,16 +129,14 @@ local function sendStatus()
         status = nodeStatus,
         lastChunkAt = lastChunkAt,
         volume = currentVolume,
+        version = APP_VERSION,
     }, PROTOCOL_SPEAKER)
 end
 
 local function rednetLoop()
     redraw("Waiting")
     if pairData.jukeboxId then
-        rednet.send(pairData.jukeboxId, {
-            type = "speaker_hello",
-            name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
-        }, PROTOCOL_SPEAKER)
+        sendHello()
         sendStatus()
     end
 
@@ -136,10 +145,8 @@ local function rednetLoop()
         if protocol == PROTOCOL_SPEAKER and type(msg) == "table" then
             if msg.type == "discover_speakers" then
                 if pairData.jukeboxId and msg.playerId == pairData.jukeboxId then
-                    rednet.send(id, {
-                        type = "speaker_hello",
-                        name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
-                    }, PROTOCOL_SPEAKER)
+                    sendHello()
+                    sendStatus()
                 end
             elseif msg.type == "audio_chunk" then
                 if id == pairData.jukeboxId then
@@ -157,10 +164,8 @@ local function rednetLoop()
                 if id == pairData.jukeboxId then
                     resetPlaybackState(msg.session or (activeSession + 1), "Restarting")
                     sendStatus()
-                    rednet.send(pairData.jukeboxId, {
-                        type = "speaker_hello",
-                        name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
-                    }, PROTOCOL_SPEAKER)
+                    sleep(0.5)
+                    os.reboot()
                 end
             end
         end
@@ -256,10 +261,7 @@ local function pairMenu()
                 pairData.jukeboxId = list[pick].id
                 pairData.jukeboxName = list[pick].name
                 savePairData()
-                rednet.send(pairData.jukeboxId, {
-                    type = "speaker_hello",
-                    name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
-                }, PROTOCOL_SPEAKER)
+                sendHello()
                 sendStatus()
                 print("Paired with " .. list[pick].name)
                 sleep(1)
@@ -314,6 +316,7 @@ end
 local function statusLoop()
     while not quitting do
         sleep(2)
+        sendHello()
         sendStatus()
     end
 end
