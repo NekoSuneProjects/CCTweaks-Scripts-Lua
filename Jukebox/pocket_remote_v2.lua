@@ -36,6 +36,7 @@ local buttons={}
 local scroll=1
 local lastStateAt=0
 local ONLINE_TIMEOUT=12
+local playlistTop=16
 
 local function showMessage(lines,pause)
     term.setBackgroundColor(colors.black)
@@ -162,8 +163,7 @@ end
 
 local function visibleRows()
     local _,h=term.getSize()
-    local top=16
-    return math.max(1,h-top+1)
+    return math.max(1,h-playlistTop+1)
 end
 
 local function clampScroll()
@@ -387,6 +387,38 @@ local function draw()
         addActionButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
     end
 
+    local function drawButtonRow(y,items)
+        local cols=#items
+        if cols==0 then
+            return y
+        end
+
+        local startX=3
+        local endX=w-1
+        local gap=1
+        local available=(endX-startX+1)-((cols-1)*gap)
+        local baseWidth=math.max(4,math.floor(available/cols))
+        local extra=available-(baseWidth*cols)
+        local x=startX
+
+        for index,item in ipairs(items) do
+            local buttonWidth=baseWidth
+            if extra>0 then
+                buttonWidth=buttonWidth+1
+                extra=extra-1
+            end
+
+            local x2=math.min(endX,x+buttonWidth-1)
+            remoteButton(item.name,x,y,x2,y+1,item.bg,item.fg,item.label,item.enabled)
+            x=x2+gap+1
+            if index==cols then
+                break
+            end
+        end
+
+        return y+2
+    end
+
     fillRect(term,1,1,1,h,colors.cyan)
     fillRect(term,2,1,w,1,colors.orange)
     term.setCursorPos(3,1)
@@ -420,46 +452,64 @@ local function draw()
     term.write(trimText(summary,math.max(1,w-2)))
     drawPill(math.max(3,w-8),5,string.format("V%.1f",tonumber(state.volume) or 1),colors.gray,colors.black)
 
-    drawPanel(2,6,w,13,colors.orange,"REMOTE")
-    remoteButton("prev",4,8,10,9,colors.orange,colors.black,"Prev",true)
-    remoteButton("play",13,7,20,9,colors.lime,colors.black,"Play",true)
-    remoteButton("stop",23,8,30,9,colors.red,colors.white,"Stop",true)
+    local buttonRows=2
+    if isAdmin() then
+        buttonRows=buttonRows+1
+    end
+    if isOwner() then
+        buttonRows=buttonRows+1
+    end
 
-    remoteButton("pair",4,11,10,12,colors.cyan,colors.black,"Pair",true)
-    remoteButton("sync",13,10,20,12,colors.yellow,colors.black,"Sync",true)
-    remoteButton("speakers",23,11,30,12,colors.gray,colors.white,"Spk",true)
+    local panelBottom=8+(buttonRows*2)
+    drawPanel(2,6,w,panelBottom,colors.orange,"REMOTE")
 
-    remoteButton("list_up",33,7,w-1,8,colors.gray,colors.white,"Up",true)
-    remoteButton("next",33,9,w-1,10,colors.orange,colors.black,"Next",true)
-    remoteButton("list_down",33,11,w-1,12,colors.gray,colors.white,"Down",true)
+    local rowY=8
+    rowY=drawButtonRow(rowY,{
+        {name="prev",bg=colors.orange,fg=colors.black,label="Prev",enabled=true},
+        {name="play",bg=colors.lime,fg=colors.black,label="Play",enabled=true},
+        {name="stop",bg=colors.red,fg=colors.white,label="Stop",enabled=true},
+        {name="next",bg=colors.orange,fg=colors.black,label="Next",enabled=true},
+    })
 
-    fillRect(term,2,14,w,14,colors.cyan)
+    rowY=drawButtonRow(rowY,{
+        {name="pair",bg=colors.cyan,fg=colors.black,label="Pair",enabled=true},
+        {name="sync",bg=colors.yellow,fg=colors.black,label="Sync",enabled=true},
+        {name="restart",bg=colors.lightBlue,fg=colors.black,label="Fix",enabled=isAdmin()},
+        {name="speakers",bg=colors.gray,fg=colors.white,label="Spk",enabled=true},
+    })
+
+    if isAdmin() then
+        rowY=drawButtonRow(rowY,{
+            {name="add",bg=colors.green,fg=colors.black,label="Add",enabled=true},
+            {name="delete",bg=colors.purple,fg=colors.white,label="Del",enabled=true},
+            {name="vol_down",bg=colors.brown,fg=colors.white,label="V-",enabled=true},
+            {name="vol_up",bg=colors.brown,fg=colors.white,label="V+",enabled=true},
+        })
+    end
+
+    if isOwner() then
+        rowY=drawButtonRow(rowY,{
+            {name="admins",bg=colors.lightGray,fg=colors.black,label="Admins",enabled=true},
+            {name="reboot",bg=colors.red,fg=colors.white,label="Boot",enabled=true},
+        })
+    end
+
+    fillRect(term,2,rowY,w,rowY,colors.cyan)
     term.setBackgroundColor(colors.cyan)
     term.setTextColor(colors.black)
     local listSummary=string.format("Playlist %d/%d",totalSongs>0 and math.min(scroll,totalSongs) or 0,totalSongs)
-    term.setCursorPos(3,14)
-    term.write(trimText(listSummary,math.max(1,w-3)))
+    local headerButtonsWidth=9
+    term.setCursorPos(3,rowY)
+    term.write(trimText(listSummary,math.max(1,w-headerButtonsWidth-3)))
+    remoteButton("list_up",w-8,rowY,w-5,rowY,colors.gray,colors.white,"Up",true)
+    remoteButton("list_down",w-4,rowY,w-1,rowY,colors.gray,colors.white,"Dn",true)
 
-    fillRect(term,2,15,w,15,colors.black)
-    term.setBackgroundColor(colors.black)
-    term.setTextColor(colors.gray)
-    local shortcutLine="Enter play  Left/Right page"
-    if isOwner() then
-        shortcutLine="A add  D del  R fix  M adm  B boot"
-    elseif isAdmin() then
-        shortcutLine="A add  D del  R fix  [ ] volume"
-    elseif not isAdmin() then
-        shortcutLine="S spk  Up/Down select"
-    end
-    term.setCursorPos(3,15)
-    term.write(trimText(shortcutLine,math.max(1,w-3)))
-
-    local top=16
-    local rows=math.max(1,h-top+1)
+    playlistTop=rowY+1
+    local rows=math.max(1,h-playlistTop+1)
 
     for i=1,rows do
         local idx=scroll+i-1
-        local y=top+i-1
+        local y=playlistTop+i-1
         local bg=(i%2==0) and colors.gray or colors.black
         local fg=(i%2==0) and colors.black or colors.white
 
@@ -680,8 +730,17 @@ local function uiLoop()
                 elseif hit=="delete" then
                     promptDeleteSong()
 
+                elseif hit=="vol_down" then
+                    send("volume_down")
+
                 elseif hit=="vol_up" then
                     send("volume_up")
+
+                elseif hit=="admins" then
+                    manageAdmins()
+
+                elseif hit=="reboot" then
+                    send("restart_jukebox")
 
                 elseif hit=="list_up" then
                     pageScroll(-1)
