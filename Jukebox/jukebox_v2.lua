@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-9"
+local APP_VERSION = "2026.03.12-10"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -91,7 +91,9 @@ local stopPlayback, playSelected, nextSong, prevSong
 local deleteSelectedSong, addSongEntry
 local getRemoteRole, getRemoteList, getBrokenSpeakerCount
 local getSpeakerCount, getExpectedSpeakerCount
-local broadcastStateToPaired, stopSpeakerNodes, stopLocalSpeakers
+local broadcastStateToPaired
+local stopSpeakerNodes = function() end
+local stopLocalSpeakers = function() end
 local speakerNodes = {}
 local remoteNodes = {}
 local listScroll = 1
@@ -475,7 +477,9 @@ end
 
 local function restartSpeakerNodes(reason)
     lastSpeakerRestartAt = os.clock()
-    stopSpeakerNodes()
+    if stopSpeakerNodes then
+        stopSpeakerNodes()
+    end
     for idStr in pairs(config.pairedSpeakers) do
         rednet.send(tonumber(idStr), {
             type = "restart",
@@ -1173,8 +1177,12 @@ end
 local function interruptPlayback()
     playRequestId = playRequestId + 1
     stopRequested = true
-    stopLocalSpeakers()
-    stopSpeakerNodes()
+    if stopLocalSpeakers then
+        stopLocalSpeakers()
+    end
+    if stopSpeakerNodes then
+        stopSpeakerNodes()
+    end
     os.queueEvent("jukebox_interrupt", playRequestId)
 end
 
