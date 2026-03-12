@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-3"
+local APP_VERSION = "2026.03.12-4"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -296,6 +296,56 @@ local function fetchJson(url)
     return data
 end
 
+local function getUrlParam(url, key)
+    if type(url) ~= "string" or type(key) ~= "string" then
+        return nil
+    end
+
+    return url:match("[?&]" .. key .. "=([^&#]+)")
+end
+
+local function getYoutubePlaylistId(query)
+    if type(query) ~= "string" then
+        return nil
+    end
+
+    local lower = query:lower()
+    if not lower:find("youtube%.com", 1) and not lower:find("youtu%.be", 1) then
+        return nil
+    end
+
+    return getUrlParam(query, "list")
+end
+
+local function findPlaylistResult(results, playlistId)
+    if type(results) ~= "table" then
+        return nil
+    end
+
+    local fallback = nil
+
+    for index, item in ipairs(results) do
+        if item and item.type == "playlist" and type(item.playlist_items) == "table" then
+            if not fallback then
+                fallback = index
+            end
+
+            if playlistId then
+                if item.id == playlistId or item.playlistId == playlistId then
+                    return index
+                end
+
+                local itemPlaylistId = getUrlParam(item.url, "list")
+                if itemPlaylistId == playlistId then
+                    return index
+                end
+            end
+        end
+    end
+
+    return fallback
+end
+
 local function normalizeYoutubeItem(item)
     if type(item) ~= "table" then
         return nil
@@ -383,6 +433,24 @@ local function addYoutubeFromTerminal()
         sleep(1.5)
         markDirty()
         return
+    end
+
+    local playlistId = getYoutubePlaylistId(query)
+    if playlistId then
+        local playlistIndex = findPlaylistResult(results, playlistId)
+        if playlistIndex then
+            local ok, info = addYoutubeEntries(results, playlistIndex)
+            print("")
+            if ok then
+                print("Playlist detected.")
+                print("Added " .. tostring(info) .. " track(s)")
+            else
+                print("Playlist add failed: " .. tostring(info))
+                markDirty()
+            end
+            sleep(1.5)
+            return
+        end
     end
 
     term.clear()
