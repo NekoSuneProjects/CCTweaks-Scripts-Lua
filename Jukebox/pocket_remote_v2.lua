@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-8"
+local APP_VERSION = "2026.03.12-9"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -388,15 +388,14 @@ local function draw()
 
     local onlineSpeakers=tonumber(state.onlineSpeakerCount) or 0
     local totalSpeakers=tonumber(state.speakerCount) or 0
-    local brokenSpeakers=tonumber(state.brokenSpeakerCount) or 0
     local selectedIndex=tonumber(state.selectedIndex) or 0
     local totalSongs=tonumber(state.count) or #(state.playlist or {})
-    local summary=string.format("Sel:%d/%d Sp:%d/%d V:%.1f",selectedIndex,totalSongs,onlineSpeakers,totalSpeakers,tonumber(state.volume) or 1)
+    local summary=string.format("Sel:%d/%d  Sp:%d/%d  V:%.1f",selectedIndex,totalSongs,onlineSpeakers,totalSpeakers,tonumber(state.volume) or 1)
     term.setCursorPos(2,5)
     term.setTextColor(colors.lightGray)
     term.write(trimText(summary,math.max(1,w-2)))
     term.setCursorPos(2,6)
-    term.write(trimText("Broken:"..tostring(brokenSpeakers).."  Tap song to select",math.max(1,w-2)))
+    term.write(trimText("Tap song to select  Enter to play",math.max(1,w-2)))
 
     local gridTop=7
     local colGap=1
@@ -425,15 +424,10 @@ local function draw()
     gridButton("list_up",2,3,colors.gray,colors.white,"Up",true)
     gridButton("list_down",2,4,colors.gray,colors.white,"Dn",true)
 
-    gridButton("add",3,1,colors.green,colors.black,"Add",isAdmin())
-    gridButton("delete",3,2,colors.purple,colors.white,"Del",isAdmin())
-    gridButton("vol_down",3,3,colors.brown,colors.white,"V-",isAdmin())
-    gridButton("vol_up",3,4,colors.brown,colors.white,"V+",isAdmin())
-
-    gridButton("speakers",4,1,colors.gray,colors.white,"Spk",true)
-    gridButton("restart",4,2,colors.lightBlue,colors.black,"Fix",isAdmin())
-    gridButton("admins",4,3,colors.lightGray,colors.black,"Adm",isOwner())
-    gridButton("reboot",4,4,colors.red,colors.white,"Boot",isOwner())
+    gridButton("speakers",3,1,colors.gray,colors.white,"Spk",true)
+    gridButton("add",3,2,colors.green,colors.black,"Add",isAdmin())
+    gridButton("delete",3,3,colors.purple,colors.white,"Del",isAdmin())
+    gridButton("vol_up",3,4,colors.brown,colors.white,"Vol+",isAdmin())
 
     fillRect(term,1,11,w,11,colors.gray)
     term.setBackgroundColor(colors.gray)
@@ -442,7 +436,19 @@ local function draw()
     term.setCursorPos(2,11)
     term.write(trimText(listSummary,math.max(1,w-2)))
 
-    local top=12
+    fillRect(term,1,12,w,12,colors.black)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.gray)
+    local shortcutLine="A add  D del  R fix  [ ] vol"
+    if isOwner() then
+        shortcutLine="A add  D del  R fix  M adm  B boot"
+    elseif not isAdmin() then
+        shortcutLine="S spk  Left/Right page  Up/Down select"
+    end
+    term.setCursorPos(2,12)
+    term.write(trimText(shortcutLine,math.max(1,w-2)))
+
+    local top=13
     local rows=math.max(1,h-top+1)
 
     for i=1,rows do
@@ -671,15 +677,6 @@ local function uiLoop()
                 elseif hit=="delete" then
                     promptDeleteSong()
 
-                elseif hit=="admins" then
-                    manageAdmins()
-
-                elseif hit=="reboot" then
-                    send("restart_jukebox")
-
-                elseif hit=="vol_down" then
-                    send("volume_down")
-
                 elseif hit=="vol_up" then
                     send("volume_up")
 
@@ -721,6 +718,25 @@ local function uiLoop()
                 pageScroll(1)
             elseif e[2]==keys.enter then
                 send("play")
+            end
+        elseif e[1]=="char" then
+            local ch=string.lower(e[2] or "")
+            if ch=="s" then
+                showSpeakerInfo()
+            elseif ch=="a" and isAdmin() then
+                promptAddSong()
+            elseif ch=="d" and isAdmin() then
+                promptDeleteSong()
+            elseif ch=="r" and isAdmin() then
+                send("restart_speakers")
+            elseif ch=="m" and isOwner() then
+                manageAdmins()
+            elseif ch=="b" and isOwner() then
+                send("restart_jukebox")
+            elseif ch=="[" and isAdmin() then
+                send("volume_down")
+            elseif ch=="]" and isAdmin() then
+                send("volume_up")
             end
         end
     end

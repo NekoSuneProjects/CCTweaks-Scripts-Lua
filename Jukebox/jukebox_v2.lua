@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-7"
+local APP_VERSION = "2026.03.12-8"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -91,7 +91,7 @@ local stopPlayback, playSelected, nextSong, prevSong
 local deleteSelectedSong, addSongEntry
 local getRemoteRole, getRemoteList, getBrokenSpeakerCount
 local getSpeakerCount, getExpectedSpeakerCount
-local broadcastStateToPaired
+local broadcastStateToPaired, stopSpeakerNodes, stopLocalSpeakers
 local speakerNodes = {}
 local remoteNodes = {}
 local listScroll = 1
