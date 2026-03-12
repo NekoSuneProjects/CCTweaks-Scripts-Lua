@@ -1,9 +1,11 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-6"
+local APP_VERSION = "2026.03.12-7"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 local DATA_FILE = "/speaker_node_pair.db"
 local MAX_QUEUE = 4
+local BOOT_SOUND_URL = "https://ipfs.ballisticok.xyz/ipfs/QmcdBJ6RRTiLvChbSA9RS8aaFF2QQCfchzKFuyUX6GQoAh"
+local PAIRED_SOUND_URL = "https://ipfs.ballisticok.xyz/ipfs/QmXQmJ8SiKLWg9cJ6AuWvgxz7KYrCi3pkNHFV41DSUyVGv"
 
 local speaker = peripheral.find("speaker")
 local modemName = peripheral.find("modem", function(name, modem)
@@ -65,6 +67,52 @@ end
 local function trim(value)
     value = tostring(value or "")
     return (value:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function playUrlOnce(url, volume)
+    if not http or type(url) ~= "string" or url == "" then
+        return false
+    end
+
+    local response = http.get(url, nil, true)
+    if not response then
+        return false
+    end
+
+    local streamDecoder = dfpwm.make_decoder()
+    speaker.stop()
+
+    while true do
+        local chunk = response.read(16 * 1024)
+        if not chunk then
+            break
+        end
+
+        local buffer = streamDecoder(chunk)
+        while not speaker.playAudio(buffer, volume or currentVolume) do
+            local event = { os.pullEvent() }
+            if event[1] == "terminate" then
+                response.close()
+                error("Terminated")
+            end
+        end
+    end
+
+    response.close()
+
+    local drainTimer = os.startTimer(0.2)
+    while true do
+        local event = { os.pullEvent() }
+        if event[1] == "speaker_audio_empty" then
+            break
+        elseif event[1] == "timer" and event[2] == drainTimer then
+            break
+        elseif event[1] == "terminate" then
+            error("Terminated")
+        end
+    end
+
+    return true
 end
 
 local function redraw(status)
@@ -261,6 +309,7 @@ local function pairMenu()
                 pairData.jukeboxId = list[pick].id
                 pairData.jukeboxName = list[pick].name
                 savePairData()
+                pcall(playUrlOnce, PAIRED_SOUND_URL, currentVolume)
                 sendHello()
                 sendStatus()
                 print("Paired with " .. list[pick].name)
@@ -338,4 +387,5 @@ local function keyboardLoop()
 end
 
 loadPairData()
+pcall(playUrlOnce, BOOT_SOUND_URL, currentVolume)
 parallel.waitForAny(rednetLoop, audioLoop, keyboardLoop, statusLoop)
