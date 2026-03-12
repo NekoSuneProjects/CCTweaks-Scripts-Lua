@@ -64,6 +64,12 @@ Needed peripherals:
 Install:
 
 ```lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_jukebox.lua
+```
+
+## For our BETA Testing
+
+```lua
 wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_jukebox.lua
 ```
 
@@ -81,6 +87,12 @@ Needed peripherals:
 - pocket computer with wireless modem
 
 Install:
+
+```lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_pocket_remote.lua
+```
+
+## For our BETA Testing
 
 ```lua
 wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_pocket_remote.lua
@@ -108,6 +120,12 @@ Needed peripherals:
 - wireless modem
 
 Install:
+
+```lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_speaker_node.lua
+```
+
+## For our BETA Testing
 
 ```lua
 wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_speaker_node.lua
@@ -220,6 +238,12 @@ Original code by `0x00sec`, modified by `NekoSuneVR`.
 - `ChatGPT/install_ctos.lua`
 
 ### Install ChatGPT
+
+```lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/ChatGPT/install_ctos.lua
+```
+
+## For our BETA Testing
 
 ```lua
 wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/install_ctos.lua
