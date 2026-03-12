@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-10"
+local APP_VERSION = "2026.03.12-11"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -162,7 +162,7 @@ end
 
 local function visibleRows()
     local _,h=term.getSize()
-    local top=13
+    local top=14
     return math.max(1,h-top+1)
 end
 
@@ -370,12 +370,25 @@ local function draw()
         term.write(text)
     end
 
+    local function drawPanel(x1,y1,x2,y2,headBg,title)
+        fillRect(term,x1,y1,x2,y2,colors.black)
+        fillRect(term,x1,y1,x2,y1,colors.gray)
+        fillRect(term,x1,y2,x2,y2,colors.gray)
+        fillRect(term,x1,y1,x1,y2,colors.gray)
+        fillRect(term,x2,y1,x2,y2,colors.gray)
+        fillRect(term,x1+1,y1+1,x2-1,y1+1,headBg)
+        term.setCursorPos(x1+2,y1+1)
+        term.setBackgroundColor(headBg)
+        term.setTextColor(colors.black)
+        term.write(trimText(title,math.max(1,x2-x1-2)))
+    end
+
     fillRect(term,1,1,1,h,colors.cyan)
-    fillRect(term,2,1,w,1,colors.lightBlue)
+    fillRect(term,2,1,w,1,colors.orange)
     term.setCursorPos(3,1)
-    term.setBackgroundColor(colors.lightBlue)
+    term.setBackgroundColor(colors.orange)
     term.setTextColor(colors.black)
-    term.write(trimText("Pocket Nexus "..APP_VERSION,math.max(1,w-3)))
+    term.write(trimText("SMART REMOTE "..APP_VERSION,math.max(1,w-3)))
 
     fillRect(term,2,2,w,2,colors.black)
     term.setCursorPos(3,2)
@@ -403,58 +416,44 @@ local function draw()
     term.write(trimText(summary,math.max(1,w-2)))
     drawPill(math.max(3,w-8),5,string.format("V%.1f",tonumber(state.volume) or 1),colors.gray,colors.black)
 
-    local gridTop=7
-    local colGap=1
-    local cols=4
-    local colWidth=math.max(4,math.floor((w-(cols-1)*colGap)/cols))
-    local function colBounds(col)
-        local x1=((col-1)*(colWidth+colGap))+1
-        local x2=(col==cols) and w or (x1+colWidth-1)
-        return x1,x2
-    end
+    local panelX1=2
+    local panelX2=w
 
-    local function gridButton(name,row,col,bg,fg,label,enabled)
-        local y1=gridTop+((row-1)*2)
-        local y2=y1+1
-        local x1,x2=colBounds(col)
-        addActionButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
-    end
+    drawPanel(panelX1,6,panelX2,11,colors.orange,"TRANSPORT")
+    addActionButton("prev",3,8,9,9,colors.orange,colors.black,"Prev",true)
+    addActionButton("play",11,8,18,9,colors.lime,colors.black,"Play",true)
+    addActionButton("stop",20,8,27,9,colors.red,colors.white,"Stop",true)
+    addActionButton("next",29,8,w-1,9,colors.orange,colors.black,"Next",true)
 
-    gridButton("prev",1,1,colors.orange,colors.black,"Prev",true)
-    gridButton("play",1,2,colors.lime,colors.black,"Play",true)
-    gridButton("stop",1,3,colors.red,colors.white,"Stop",true)
-    gridButton("next",1,4,colors.orange,colors.black,"Next",true)
+    addActionButton("pair",3,10,9,11,colors.cyan,colors.black,"Pair",true)
+    addActionButton("sync",11,10,18,11,colors.yellow,colors.black,"Sync",true)
+    addActionButton("speakers",20,10,27,11,colors.gray,colors.white,"Spk",true)
+    addActionButton("vol_up",29,10,w-1,11,colors.brown,colors.white,"Vol+",isAdmin())
 
-    gridButton("pair",2,1,colors.cyan,colors.black,"Pair",true)
-    gridButton("sync",2,2,colors.yellow,colors.black,"Sync",true)
-    gridButton("list_up",2,3,colors.gray,colors.white,"Up",true)
-    gridButton("list_down",2,4,colors.gray,colors.white,"Dn",true)
-
-    gridButton("speakers",3,1,colors.gray,colors.white,"Spk",true)
-    gridButton("add",3,2,colors.green,colors.black,"Add",isAdmin())
-    gridButton("delete",3,3,colors.purple,colors.white,"Del",isAdmin())
-    gridButton("vol_up",3,4,colors.brown,colors.white,"Vol+",isAdmin())
-
-    fillRect(term,2,11,w,11,colors.cyan)
+    fillRect(term,2,12,w,12,colors.cyan)
     term.setBackgroundColor(colors.cyan)
     term.setTextColor(colors.black)
     local listSummary=string.format("Playlist %d/%d",totalSongs>0 and math.min(scroll,totalSongs) or 0,totalSongs)
-    term.setCursorPos(3,11)
-    term.write(trimText(listSummary,math.max(1,w-3)))
+    term.setCursorPos(3,12)
+    term.write(trimText(listSummary,math.max(1,w-14)))
+    addActionButton("list_up",w-10,12,w-6,12,colors.gray,colors.white,"Up",true)
+    addActionButton("list_down",w-5,12,w-1,12,colors.gray,colors.white,"Dn",true)
 
-    fillRect(term,2,12,w,12,colors.black)
+    fillRect(term,2,13,w,13,colors.black)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.gray)
-    local shortcutLine="A add  D del  R fix  [ ] vol"
+    local shortcutLine="Enter play  Left/Right page  Up/Down select"
     if isOwner() then
         shortcutLine="A add  D del  R fix  M adm  B boot"
+    elseif isAdmin() then
+        shortcutLine="A add  D del  R fix  [ ] volume"
     elseif not isAdmin() then
-        shortcutLine="S spk  Left/Right page  Up/Down select"
+        shortcutLine="S spk  Enter play  Left/Right page"
     end
-    term.setCursorPos(3,12)
+    term.setCursorPos(3,13)
     term.write(trimText(shortcutLine,math.max(1,w-3)))
 
-    local top=13
+    local top=14
     local rows=math.max(1,h-top+1)
 
     for i=1,rows do
@@ -483,9 +482,9 @@ local function draw()
                 source="U"
             end
 
-            fillRect(term,2,y,4,y,idx==state.currentIndex and state.playing and colors.black or colors.lightBlue)
+            fillRect(term,2,y,4,y,idx==state.currentIndex and state.playing and colors.black or colors.orange)
             term.setCursorPos(3,y)
-            term.setBackgroundColor(idx==state.currentIndex and state.playing and colors.black or colors.lightBlue)
+            term.setBackgroundColor(idx==state.currentIndex and state.playing and colors.black or colors.orange)
             term.setTextColor(idx==state.currentIndex and state.playing and colors.lime or colors.black)
             term.write(source)
             term.setCursorPos(6,y)
