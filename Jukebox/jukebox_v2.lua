@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-12"
+local APP_VERSION = "2026.03.12-13"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -1095,7 +1095,7 @@ local function drawUI()
             fg = colors.white
         end
 
-        fillRect(monitor, 1, y, w, y, bg)
+        fillRect(monitor, contentX1 + 1, y, contentX2 - 1, y, bg)
 
         if playlist[idx] then
             local sourceTag = "FILE"
@@ -1109,7 +1109,7 @@ local function drawUI()
             drawText(contentX1 + 3, y, trimText(sourceTag, 3), idx == currentIndex and playing and colors.lime or colors.black, idx == currentIndex and playing and colors.black or colors.orange)
             drawText(contentX1 + 9, y, string.format("%02d", idx), colors.lightGray, bg)
             drawText(contentX1 + 13, y, trimText(playlist[idx].name or "Unknown", math.max(1, contentX2 - contentX1 - 14)), fg, bg)
-            mapArea("song:" .. idx, 1, y, w, y)
+            mapArea("song:" .. idx, contentX1 + 1, y, contentX2 - 1, y)
         end
     end
 
