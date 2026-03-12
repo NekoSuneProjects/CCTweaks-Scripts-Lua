@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-9"
+local APP_VERSION = "2026.03.12-10"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -162,7 +162,7 @@ end
 
 local function visibleRows()
     local _,h=term.getSize()
-    local top=12
+    local top=13
     return math.max(1,h-top+1)
 end
 
@@ -362,40 +362,46 @@ local function draw()
     local w,h=term.getSize()
     fillRect(term,1,1,w,h,colors.black)
 
-    fillRect(term,1,1,w,1,colors.lightBlue)
-    term.setCursorPos(2,1)
+    local function drawPill(x1,y,text,bg,fg)
+        fillRect(term,x1,y,math.min(w,x1+#text+1),y,bg)
+        term.setCursorPos(x1+1,y)
+        term.setBackgroundColor(bg)
+        term.setTextColor(fg)
+        term.write(text)
+    end
+
+    fillRect(term,1,1,1,h,colors.cyan)
+    fillRect(term,2,1,w,1,colors.lightBlue)
+    term.setCursorPos(3,1)
     term.setBackgroundColor(colors.lightBlue)
     term.setTextColor(colors.black)
-    term.write(trimText("Pocket Jukebox "..APP_VERSION,math.max(1,w-2)))
+    term.write(trimText("Pocket Nexus "..APP_VERSION,math.max(1,w-3)))
 
-    fillRect(term,1,2,w,2,colors.gray)
-    term.setCursorPos(2,2)
-    term.setBackgroundColor(colors.gray)
-    term.setTextColor(colors.black)
-    term.write(trimText(pairData.targetName or "No target",math.max(1,w-10)))
-    term.setCursorPos(math.max(2,w-7),2)
-    term.setTextColor(isOnline() and colors.lime or colors.red)
-    term.write(isOnline() and "ONLINE" or "OFFLINE")
-
-    fillRect(term,1,3,w,4,colors.black)
-    term.setCursorPos(2,3)
-    term.setTextColor(colors.cyan)
-    term.write(trimText((state.status or "Idle").." | "..string.upper(state.remoteRole or "guest"),math.max(1,w-2)))
-
-    term.setCursorPos(2,4)
+    fillRect(term,2,2,w,2,colors.black)
+    term.setCursorPos(3,2)
+    term.setBackgroundColor(colors.black)
     term.setTextColor(colors.white)
-    term.write(trimText(state.nowPlaying or "Nothing",math.max(1,w-2)))
+    term.write(trimText(pairData.targetName or "No target",math.max(1,w-12)))
+    drawPill(math.max(3,w-8),2,isOnline() and "ON" or "OFF",isOnline() and colors.lime or colors.red,colors.black)
+
+    fillRect(term,2,3,w,5,colors.black)
+    term.setCursorPos(3,3)
+    term.setTextColor(colors.cyan)
+    term.write(trimText(string.upper(state.status or "Idle"),math.max(1,w-4)))
+
+    term.setCursorPos(3,4)
+    term.setTextColor(colors.white)
+    term.write(trimText(state.nowPlaying or "Nothing",math.max(1,w-4)))
 
     local onlineSpeakers=tonumber(state.onlineSpeakerCount) or 0
     local totalSpeakers=tonumber(state.speakerCount) or 0
     local selectedIndex=tonumber(state.selectedIndex) or 0
     local totalSongs=tonumber(state.count) or #(state.playlist or {})
-    local summary=string.format("Sel:%d/%d  Sp:%d/%d  V:%.1f",selectedIndex,totalSongs,onlineSpeakers,totalSpeakers,tonumber(state.volume) or 1)
+    local summary=string.format("Sel %d/%d  Sp %d/%d",selectedIndex,totalSongs,onlineSpeakers,totalSpeakers)
     term.setCursorPos(2,5)
     term.setTextColor(colors.lightGray)
     term.write(trimText(summary,math.max(1,w-2)))
-    term.setCursorPos(2,6)
-    term.write(trimText("Tap song to select  Enter to play",math.max(1,w-2)))
+    drawPill(math.max(3,w-8),5,string.format("V%.1f",tonumber(state.volume) or 1),colors.gray,colors.black)
 
     local gridTop=7
     local colGap=1
@@ -429,14 +435,14 @@ local function draw()
     gridButton("delete",3,3,colors.purple,colors.white,"Del",isAdmin())
     gridButton("vol_up",3,4,colors.brown,colors.white,"Vol+",isAdmin())
 
-    fillRect(term,1,11,w,11,colors.gray)
-    term.setBackgroundColor(colors.gray)
+    fillRect(term,2,11,w,11,colors.cyan)
+    term.setBackgroundColor(colors.cyan)
     term.setTextColor(colors.black)
     local listSummary=string.format("Playlist %d/%d",totalSongs>0 and math.min(scroll,totalSongs) or 0,totalSongs)
-    term.setCursorPos(2,11)
-    term.write(trimText(listSummary,math.max(1,w-2)))
+    term.setCursorPos(3,11)
+    term.write(trimText(listSummary,math.max(1,w-3)))
 
-    fillRect(term,1,12,w,12,colors.black)
+    fillRect(term,2,12,w,12,colors.black)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.gray)
     local shortcutLine="A add  D del  R fix  [ ] vol"
@@ -445,8 +451,8 @@ local function draw()
     elseif not isAdmin() then
         shortcutLine="S spk  Left/Right page  Up/Down select"
     end
-    term.setCursorPos(2,12)
-    term.write(trimText(shortcutLine,math.max(1,w-2)))
+    term.setCursorPos(3,12)
+    term.write(trimText(shortcutLine,math.max(1,w-3)))
 
     local top=13
     local rows=math.max(1,h-top+1)
@@ -467,16 +473,9 @@ local function draw()
             fg=colors.black
         end
 
-        fillRect(term,1,y,w,y,bg)
+        fillRect(term,2,y,w,y,bg)
 
         if state.playlist[idx] then
-            local marker=" "
-            if idx==state.currentIndex and state.playing then
-                marker=">"
-            elseif idx==state.selectedIndex then
-                marker="*"
-            end
-
             local source="F"
             if state.playlist[idx].ytId then
                 source="Y"
@@ -484,14 +483,18 @@ local function draw()
                 source="U"
             end
 
-            local line=string.format("%s%02d %s %s",marker,idx,source,state.playlist[idx].name or "Unknown")
-            term.setCursorPos(1,y)
+            fillRect(term,2,y,4,y,idx==state.currentIndex and state.playing and colors.black or colors.lightBlue)
+            term.setCursorPos(3,y)
+            term.setBackgroundColor(idx==state.currentIndex and state.playing and colors.black or colors.lightBlue)
+            term.setTextColor(idx==state.currentIndex and state.playing and colors.lime or colors.black)
+            term.write(source)
+            term.setCursorPos(6,y)
             term.setBackgroundColor(bg)
             term.setTextColor(fg)
-            term.write(trimText(line,w))
+            term.write(trimText(string.format("%02d %s",idx,state.playlist[idx].name or "Unknown"),math.max(1,w-7)))
 
             buttons[y]=buttons[y] or {}
-            for x=1,w do
+            for x=2,w do
                 buttons[y][x]="song:"..idx
             end
         end
