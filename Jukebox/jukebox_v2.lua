@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-4"
+local APP_VERSION = "2026.03.12-6"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -58,7 +58,10 @@ local config = {
     playerName = os.getComputerLabel() or ("Jukebox-" .. os.getComputerID()),
     pairCode = tostring(math.random(1000, 9999)),
     pairedRemotes = {},
-    pairedSpeakers = {}
+    pairedSpeakers = {},
+    ownerRemoteId = nil,
+    adminRemotes = {},
+    volume = 1,
 }
 
 local playlist = {}
@@ -76,8 +79,17 @@ local playRequestId = 0
 local buttonMap = {}
 local uiDirty = true
 local stopPlayback, playSelected, nextSong, prevSong
+local deleteSelectedSong, addSongEntry
+local getRemoteRole, getRemoteList, getBrokenSpeakerCount
+local broadcastStateToPaired
 local speakerNodes = {}
 local remoteNodes = {}
+local listScroll = 1
+local lastSpeakerRestartAt = 0
+local SPEAKER_STALE_SECONDS = 10
+local SPEAKER_BROKEN_QUEUE = 1
+local SPEAKER_AUTO_RESTART_SECONDS = 3
+local SPEAKER_RESTART_COOLDOWN = 8
 
 local function exitApp()
     stopPlayback()
@@ -129,6 +141,18 @@ local function loadData()
     if type(config.pairedSpeakers) ~= "table" then
         config.pairedSpeakers = {}
     end
+
+    if type(config.adminRemotes) ~= "table" then
+        config.adminRemotes = {}
+    end
+
+    if config.ownerRemoteId ~= nil then
+        config.ownerRemoteId = tonumber(config.ownerRemoteId)
+    end
+
+    config.volume = tonumber(config.volume) or 1
+    if config.volume < 0 then config.volume = 0 end
+    if config.volume > 3 then config.volume = 3 end
 end
 
 local function clampIndices()
@@ -144,9 +168,47 @@ local function clampIndices()
     if selectedIndex > #playlist then selectedIndex = #playlist end
 end
 
+local function getVisibleRows()
+    local _, h = monitor.getSize()
+    local listTop = 8
+    local listBottom = h - 4
+    return math.max(1, listBottom - listTop + 1)
+end
+
+local function clampListScroll()
+    local maxStart = math.max(1, #playlist - getVisibleRows() + 1)
+    if listScroll < 1 then listScroll = 1 end
+    if listScroll > maxStart then listScroll = maxStart end
+end
+
+local function ensureSelectedVisible()
+    local rows = getVisibleRows()
+    if selectedIndex < listScroll then
+        listScroll = selectedIndex
+    elseif selectedIndex > (listScroll + rows - 1) then
+        listScroll = selectedIndex - rows + 1
+    end
+    clampListScroll()
+end
+
 local function markDirty()
     version = version + 1
     uiDirty = true
+end
+
+local function changeVolume(delta)
+    config.volume = math.max(0, math.min(3, (tonumber(config.volume) or 1) + delta))
+    saveConfig()
+    markDirty()
+    broadcastStateToPaired()
+end
+
+local function restartJukeboxSystem()
+    statusText = "Rebooting jukebox"
+    markDirty()
+    broadcastStateToPaired()
+    sleep(0.5)
+    os.reboot()
 end
 
 local function trimText(text, maxLen)
@@ -196,7 +258,23 @@ local function addButton(name, x1, y1, x2, y2, bg, fg, label)
     mapArea(name, x1, y1, x2, y2)
 end
 
-local function getStatePayload()
+local function getStatePayload(targetId)
+    local speakers = {}
+    for idStr, node in pairs(speakerNodes) do
+        speakers[#speakers + 1] = {
+            id = tonumber(idStr),
+            name = node.name,
+            queueSize = node.queueSize or 0,
+            stuck = node.stuck == true,
+            status = node.status or "Waiting",
+            lastSeenAge = math.floor(os.clock() - (node.lastStatusAt or node.seenAt or os.clock())),
+        }
+    end
+
+    table.sort(speakers, function(a, b)
+        return (a.id or 0) < (b.id or 0)
+    end)
+
     return {
         type = "state",
         playerId = os.getComputerID(),
@@ -210,13 +288,21 @@ local function getStatePayload()
         playlist = playlist,
         pairCode = config.pairCode,
         version = version,
+        ownerRemoteId = config.ownerRemoteId,
+        adminRemotes = config.adminRemotes,
+        remoteRole = targetId and getRemoteRole(targetId) or "guest",
+        remoteList = getRemoteList(),
+        speakers = speakers,
+        speakerCount = getSpeakerCount(),
+        brokenSpeakerCount = getBrokenSpeakerCount(),
+        online = true,
+        volume = config.volume,
     }
 end
 
-local function broadcastStateToPaired()
-    local payload = getStatePayload()
+broadcastStateToPaired = function()
     for idStr, _ in pairs(config.pairedRemotes) do
-        rednet.send(tonumber(idStr), payload, PROTOCOL_STATE)
+        rednet.send(tonumber(idStr), getStatePayload(tonumber(idStr)), PROTOCOL_STATE)
     end
 end
 
@@ -240,7 +326,13 @@ local function rememberSpeakerNode(id, name)
     speakerNodes[tostring(id)] = {
         id = id,
         name = name or ("Speaker-" .. id),
-        seenAt = os.clock()
+        seenAt = os.clock(),
+        lastStatusAt = os.clock(),
+        lastChunkAt = 0,
+        queueSize = 0,
+        stuck = false,
+        status = "Waiting",
+        brokenSince = nil,
     }
 end
 
@@ -258,11 +350,139 @@ local function getSpeakerCount()
     return count
 end
 
+getBrokenSpeakerCount = function()
+    local count = 0
+    for _, node in pairs(speakerNodes) do
+        if node.stuck then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function isOwnerRemote(id)
+    return tonumber(config.ownerRemoteId) == tonumber(id)
+end
+
+local function isAdminRemote(id)
+    return isOwnerRemote(id) or config.adminRemotes[tostring(id)] == true
+end
+
+getRemoteRole = function(id)
+    if isOwnerRemote(id) then
+        return "owner"
+    end
+    if isAdminRemote(id) then
+        return "admin"
+    end
+    return "guest"
+end
+
+local function rebuildAdminList()
+    for idStr in pairs(config.adminRemotes) do
+        if config.pairedRemotes[idStr] ~= true then
+            config.adminRemotes[idStr] = nil
+        end
+    end
+end
+
+local function assignOwnerIfNeeded(id)
+    if not config.ownerRemoteId then
+        config.ownerRemoteId = id
+        saveConfig()
+    end
+end
+
 local function cleanupSpeakerNodes()
     local now = os.clock()
     for idStr, node in pairs(speakerNodes) do
-        if now - (node.seenAt or 0) > 60 then
+        local age = now - (node.lastStatusAt or node.seenAt or 0)
+        if age > 60 then
             speakerNodes[idStr] = nil
+        elseif age > SPEAKER_STALE_SECONDS then
+            node.stuck = true
+            node.status = "Offline"
+            node.brokenSince = node.brokenSince or now
+        end
+    end
+end
+
+local function noteSpeakerStatus(id, msg)
+    if config.pairedSpeakers[tostring(id)] ~= true then
+        return
+    end
+
+    rememberSpeakerNode(id, msg.name)
+    local node = speakerNodes[tostring(id)]
+    if not node then
+        return
+    end
+
+    node.name = msg.name or node.name
+    node.seenAt = os.clock()
+    node.lastStatusAt = os.clock()
+    node.queueSize = tonumber(msg.queueSize) or 0
+    node.status = tostring(msg.status or node.status or "Waiting")
+    node.lastChunkAt = tonumber(msg.lastChunkAt) or node.lastChunkAt or 0
+    node.volume = tonumber(msg.volume) or node.volume or config.volume
+    node.online = true
+
+    if node.queueSize > SPEAKER_BROKEN_QUEUE then
+        node.stuck = true
+        node.brokenSince = node.brokenSince or os.clock()
+    else
+        node.stuck = false
+        node.brokenSince = nil
+    end
+end
+
+local function restartSpeakerNodes(reason)
+    lastSpeakerRestartAt = os.clock()
+    stopSpeakerNodes()
+    for idStr in pairs(speakerNodes) do
+        rednet.send(tonumber(idStr), {
+            type = "restart",
+            session = playSession,
+            reason = reason or "manual",
+        }, PROTOCOL_SPEAKER)
+    end
+    queueSpeakerDiscovery()
+    statusText = "Restarting speakers"
+    markDirty()
+    broadcastStateToPaired()
+end
+
+local function restartSpeakerNode(targetId, reason)
+    local node = speakerNodes[tostring(targetId)]
+    if not node then
+        return false
+    end
+
+    rednet.send(targetId, {
+        type = "restart",
+        session = playSession,
+        reason = reason or "manual",
+    }, PROTOCOL_SPEAKER)
+
+    node.status = "Restarting"
+    node.stuck = false
+    node.brokenSince = nil
+    lastSpeakerRestartAt = os.clock()
+    markDirty()
+    broadcastStateToPaired()
+    return true
+end
+
+local function autoRecoverSpeakers()
+    local now = os.clock()
+    if now - lastSpeakerRestartAt < SPEAKER_RESTART_COOLDOWN then
+        return
+    end
+
+    for _, node in pairs(speakerNodes) do
+        if node.stuck and node.brokenSince and (now - node.brokenSince) >= SPEAKER_AUTO_RESTART_SECONDS then
+            restartSpeakerNodes("auto-recover")
+            return
         end
     end
 end
@@ -485,7 +705,7 @@ local function addYoutubeFromTerminal()
 end
 
 local function sendStateToRemote(id)
-    rednet.send(id, getStatePayload(), PROTOCOL_STATE)
+    rednet.send(id, getStatePayload(id), PROTOCOL_STATE)
 end
 
 local function isPairedRemote(id)
@@ -494,6 +714,8 @@ end
 
 local function pairRemote(id)
     config.pairedRemotes[tostring(id)] = true
+    assignOwnerIfNeeded(id)
+    rebuildAdminList()
     saveConfig()
     markDirty()
 end
@@ -527,6 +749,74 @@ local function getRemoteCount()
     return count
 end
 
+getRemoteList = function()
+    local list = {}
+    for idStr in pairs(config.pairedRemotes) do
+        local id = tonumber(idStr)
+        local node = remoteNodes[idStr]
+        list[#list + 1] = {
+            id = id,
+            name = node and node.name or ("Pocket-" .. idStr),
+            role = getRemoteRole(id),
+        }
+    end
+
+    table.sort(list, function(a, b)
+        return (a.id or 0) < (b.id or 0)
+    end)
+
+    return list
+end
+
+addSongEntry = function(name, url)
+    if trim(name) == "" or trim(url) == "" then
+        return false, "Missing name or URL"
+    end
+
+    table.insert(playlist, {
+        name = trim(name),
+        url = trim(url),
+    })
+    savePlaylist()
+    selectedIndex = #playlist
+    currentIndex = selectedIndex
+    ensureSelectedVisible()
+    markDirty()
+    broadcastStateToPaired()
+    return true
+end
+
+local function grantAdmin(requesterId, targetId)
+    if not isOwnerRemote(requesterId) then
+        return false, "Owner only"
+    end
+    if config.pairedRemotes[tostring(targetId)] ~= true then
+        return false, "Target not paired"
+    end
+    if isOwnerRemote(targetId) then
+        return false, "Owner already has access"
+    end
+    config.adminRemotes[tostring(targetId)] = true
+    saveConfig()
+    markDirty()
+    broadcastStateToPaired()
+    return true
+end
+
+local function revokeAdmin(requesterId, targetId)
+    if not isOwnerRemote(requesterId) then
+        return false, "Owner only"
+    end
+    if isOwnerRemote(targetId) then
+        return false, "Cannot revoke owner"
+    end
+    config.adminRemotes[tostring(targetId)] = nil
+    saveConfig()
+    markDirty()
+    broadcastStateToPaired()
+    return true
+end
+
 local function handleRemoteCommand(id, msg)
     if not isPairedRemote(id) then
         return
@@ -554,18 +844,75 @@ local function handleRemoteCommand(id, msg)
         local idx = tonumber(msg.index)
         if idx and playlist[idx] then
             selectedIndex = idx
+            ensureSelectedVisible()
             markDirty()
             broadcastStateToPaired()
         end
     elseif msg.action == "request_state" then
         sendStateToRemote(id)
+    elseif msg.action == "restart_speakers" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        restartSpeakerNodes("remote")
+    elseif msg.action == "restart_speaker" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        restartSpeakerNode(tonumber(msg.speakerId), "remote-single")
+    elseif msg.action == "restart_jukebox" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        restartJukeboxSystem()
+    elseif msg.action == "delete" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        local idx = tonumber(msg.index) or selectedIndex
+        if idx and playlist[idx] then
+            selectedIndex = idx
+            deleteSelectedSong()
+        end
+    elseif msg.action == "add_url" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        local ok = addSongEntry(msg.name, msg.url)
+        if not ok then
+            statusText = "Pocket add failed"
+            markDirty()
+            broadcastStateToPaired()
+        end
+    elseif msg.action == "grant_admin" then
+        grantAdmin(id, tonumber(msg.remoteId))
+    elseif msg.action == "revoke_admin" then
+        revokeAdmin(id, tonumber(msg.remoteId))
+    elseif msg.action == "volume_up" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        changeVolume(0.1)
+    elseif msg.action == "volume_down" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        changeVolume(-0.1)
     end
 end
 
-local function deleteSelectedSong()
+deleteSelectedSong = function()
     if #playlist == 0 then return end
     table.remove(playlist, selectedIndex)
     clampIndices()
+    ensureSelectedVisible()
     savePlaylist()
     markDirty()
     broadcastStateToPaired()
@@ -604,11 +951,13 @@ local function drawUI()
     drawText(2, 2, "Pair:" .. config.pairCode, colors.black, UI.subHeader)
     drawText(math.max(2, w - 16), 2, "Songs:" .. #playlist, colors.black, UI.subHeader)
     drawText(math.max(2, w - 33), 2, "Speakers:" .. getSpeakerCount(), colors.black, UI.subHeader)
-    drawText(math.max(2, w - 47), 2, "Pockets:" .. getRemoteCount(), colors.black, UI.subHeader)
+    drawText(math.max(2, w - 47), 2, "Broken:" .. getBrokenSpeakerCount(), colors.black, UI.subHeader)
+    drawText(math.max(2, w - 61), 2, "Pockets:" .. getRemoteCount(), colors.black, UI.subHeader)
 
     drawFilledLine(3, UI.panelDark)
     drawText(2, 3, "Status:", UI.dim, UI.panelDark)
     drawText(10, 3, trimText(statusText, math.max(1, w - 24)), UI.text, UI.panelDark)
+    drawText(math.max(2, w - 28), 3, "Vol:" .. string.format("%.1f", config.volume), UI.dim, UI.panelDark)
     drawText(math.max(2, w - 12), 3, "Q/Back Exit", UI.dim, UI.panelDark)
 
     drawFilledLine(4, UI.panelDark)
@@ -647,10 +996,7 @@ local function drawUI()
     local listBottom = h - 4
     local rows = math.max(1, listBottom - listTop + 1)
 
-    local startIndex = 1
-    if selectedIndex > rows then
-        startIndex = selectedIndex - rows + 1
-    end
+    local startIndex = listScroll
 
     for row = 0, rows - 1 do
         local idx = startIndex + row
@@ -701,7 +1047,19 @@ local function drawUI()
     x = x + 8
     addButton("delete", x, by, x + 8, by + 1, UI.buttonDelete, colors.white, "Delete")
     x = x + 10
+    addButton("list_up", x, by, x + 5, by + 1, colors.gray, colors.white, "Up")
+    x = x + 7
+    addButton("list_down", x, by, x + 5, by + 1, colors.gray, colors.white, "Down")
+    x = x + 7
+    addButton("vol_down", x, by, x + 4, by + 1, colors.brown, colors.white, "V-")
+    x = x + 6
+    addButton("vol_up", x, by, x + 4, by + 1, colors.brown, colors.white, "V+")
+    x = x + 6
     addButton("pair",   x, by, x + 8, by + 1, UI.buttonPair,   colors.black, "NewCode")
+    x = x + 10
+    addButton("restart_speakers", x, by, x + 10, by + 1, colors.lightBlue, colors.black, "FixSpk")
+    x = x + 12
+    addButton("restart_jukebox", x, by, x + 10, by + 1, colors.red, colors.white, "Reboot")
 end
 
 local function broadcastSpeakerChunk(chunk)
@@ -711,12 +1069,14 @@ local function broadcastSpeakerChunk(chunk)
             type = "audio_chunk",
             session = playSession,
             chunk = chunk,
+            volume = config.volume,
         }, PROTOCOL_SPEAKER)
 
         if not ok then
             speakerNodes[idStr] = nil
         else
             node.seenAt = os.clock()
+            node.lastChunkAt = os.clock()
         end
     end
 end
@@ -739,7 +1099,7 @@ local function interruptPlayback()
 end
 
 local function playBuffer(buffer, requestId)
-    while not speaker.playAudio(buffer) do
+    while not speaker.playAudio(buffer, config.volume) do
         os.pullEvent()
         if playRequestId ~= requestId or stopRequested then
             return false
@@ -867,6 +1227,7 @@ local function playTrack(song)
         currentIndex = currentIndex + 1
         if currentIndex > #playlist then currentIndex = 1 end
         selectedIndex = currentIndex
+        ensureSelectedVisible()
         markDirty()
         broadcastStateToPaired()
     end
@@ -923,6 +1284,7 @@ local function addSongFromTerminal()
     savePlaylist()
     selectedIndex = #playlist
     currentIndex = selectedIndex
+    ensureSelectedVisible()
     markDirty()
     broadcastStateToPaired()
 end
@@ -941,6 +1303,7 @@ playSelected = function()
     if #playlist == 0 then return end
     interruptPlayback()
     currentIndex = selectedIndex
+    ensureSelectedVisible()
     playing = true
     statusText = "Starting"
     lastProgressTick = os.clock()
@@ -954,6 +1317,7 @@ nextSong = function()
     currentIndex = currentIndex + 1
     clampIndices()
     selectedIndex = currentIndex
+    ensureSelectedVisible()
     playing = true
     statusText = "Next"
     lastProgressTick = os.clock()
@@ -967,6 +1331,7 @@ prevSong = function()
     currentIndex = currentIndex - 1
     clampIndices()
     selectedIndex = currentIndex
+    ensureSelectedVisible()
     playing = true
     statusText = "Prev"
     lastProgressTick = os.clock()
@@ -1007,6 +1372,7 @@ local function monitorLoop()
             local idx = tonumber(hit:sub(6))
             if idx and playlist[idx] then
                 selectedIndex = idx
+                ensureSelectedVisible()
                 markDirty()
                 broadcastStateToPaired()
             end
@@ -1022,8 +1388,24 @@ local function monitorLoop()
             addSongFromTerminal()
         elseif hit == "delete" then
             deleteSelectedSong()
+        elseif hit == "list_up" then
+            listScroll = listScroll - getVisibleRows()
+            clampListScroll()
+            markDirty()
+        elseif hit == "list_down" then
+            listScroll = listScroll + getVisibleRows()
+            clampListScroll()
+            markDirty()
+        elseif hit == "vol_down" then
+            changeVolume(-0.1)
+        elseif hit == "vol_up" then
+            changeVolume(0.1)
         elseif hit == "pair" then
             newPairCode()
+        elseif hit == "restart_speakers" then
+            restartSpeakerNodes("monitor")
+        elseif hit == "restart_jukebox" then
+            restartJukeboxSystem()
         end
     end
 end
@@ -1033,6 +1415,7 @@ local function uiLoop()
         sleep(0.2)
         cleanupRemoteNodes()
         cleanupSpeakerNodes()
+        autoRecoverSpeakers()
         if playing then
             uiDirty = true
             drawUI()
@@ -1084,6 +1467,9 @@ local function rednetLoop()
         elseif protocol == PROTOCOL_SPEAKER and type(msg) == "table" then
             if msg.type == "speaker_hello" then
                 rememberSpeakerNode(id, msg.name)
+                markDirty()
+            elseif msg.type == "speaker_status" then
+                noteSpeakerStatus(id, msg)
                 markDirty()
             elseif msg.type == "speaker_pair_request" then
                 local ok = trim(msg.code) == trim(config.pairCode)

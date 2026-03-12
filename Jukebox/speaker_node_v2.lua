@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.11-3"
+local APP_VERSION = "2026.03.12-5"
 
 local PROTOCOL_SPEAKER = "jukebox_v2_speaker"
 local DATA_FILE = "/speaker_node_pair.db"
@@ -19,6 +19,9 @@ local decoder = dfpwm.make_decoder()
 local queue = {}
 local activeSession = 0
 local quitting = false
+local lastChunkAt = 0
+local nodeStatus = "Waiting"
+local currentVolume = 1
 local pairData = {
     jukeboxId = nil,
     jukeboxName = nil,
@@ -72,6 +75,7 @@ local function resetPlaybackState(session, status)
     activeSession = session or 0
     decoder = dfpwm.make_decoder()
     speaker.stop()
+    nodeStatus = status or "Waiting"
     if status then
         redraw(status)
     end
@@ -94,6 +98,27 @@ local function enqueueChunk(msg)
     end
 
     queue[#queue + 1] = msg.chunk
+    lastChunkAt = os.clock()
+    if #queue > 1 then
+        nodeStatus = "Queue stuck"
+    else
+        nodeStatus = "Playing"
+    end
+end
+
+local function sendStatus()
+    if not pairData.jukeboxId then
+        return
+    end
+
+    rednet.send(pairData.jukeboxId, {
+        type = "speaker_status",
+        name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
+        queueSize = #queue,
+        status = nodeStatus,
+        lastChunkAt = lastChunkAt,
+        volume = currentVolume,
+    }, PROTOCOL_SPEAKER)
 end
 
 local function rednetLoop()
@@ -103,6 +128,7 @@ local function rednetLoop()
             type = "speaker_hello",
             name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
         }, PROTOCOL_SPEAKER)
+        sendStatus()
     end
 
     while not quitting do
@@ -117,12 +143,24 @@ local function rednetLoop()
                 end
             elseif msg.type == "audio_chunk" then
                 if id == pairData.jukeboxId then
+                    currentVolume = tonumber(msg.volume) or currentVolume
                     enqueueChunk(msg)
-                    redraw("Playing")
+                    redraw(nodeStatus)
+                    sendStatus()
                 end
             elseif msg.type == "stop" then
                 if id == pairData.jukeboxId then
                     resetPlaybackState(msg.session or (activeSession + 1), "Stopped")
+                    sendStatus()
+                end
+            elseif msg.type == "restart" then
+                if id == pairData.jukeboxId then
+                    resetPlaybackState(msg.session or (activeSession + 1), "Restarting")
+                    sendStatus()
+                    rednet.send(pairData.jukeboxId, {
+                        type = "speaker_hello",
+                        name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
+                    }, PROTOCOL_SPEAKER)
                 end
             end
         end
@@ -222,6 +260,7 @@ local function pairMenu()
                     type = "speaker_hello",
                     name = os.getComputerLabel() or ("Speaker-" .. os.getComputerID()),
                 }, PROTOCOL_SPEAKER)
+                sendStatus()
                 print("Paired with " .. list[pick].name)
                 sleep(1)
                 redraw("Waiting")
@@ -255,7 +294,7 @@ local function audioLoop()
         else
             local chunk = table.remove(queue, 1)
             local buffer = decoder(chunk)
-            while not speaker.playAudio(buffer) do
+            while not speaker.playAudio(buffer, currentVolume) do
                 local event, side = os.pullEvent("speaker_audio_empty")
                 if side then
                     -- continue
@@ -264,7 +303,18 @@ local function audioLoop()
                     return
                 end
             end
+            if #queue <= 1 and nodeStatus ~= "Stopped" then
+                nodeStatus = (#queue == 0) and "Waiting" or "Playing"
+            end
+            sendStatus()
         end
+    end
+end
+
+local function statusLoop()
+    while not quitting do
+        sleep(2)
+        sendStatus()
     end
 end
 
@@ -285,4 +335,4 @@ local function keyboardLoop()
 end
 
 loadPairData()
-parallel.waitForAny(rednetLoop, audioLoop, keyboardLoop)
+parallel.waitForAny(rednetLoop, audioLoop, keyboardLoop, statusLoop)
