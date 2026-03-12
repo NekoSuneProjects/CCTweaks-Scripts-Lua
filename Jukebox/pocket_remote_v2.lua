@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-11"
+local APP_VERSION = "2026.03.12-12"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -162,7 +162,7 @@ end
 
 local function visibleRows()
     local _,h=term.getSize()
-    local top=14
+    local top=16
     return math.max(1,h-top+1)
 end
 
@@ -383,12 +383,16 @@ local function draw()
         term.write(trimText(title,math.max(1,x2-x1-2)))
     end
 
+    local function remoteButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
+        addActionButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
+    end
+
     fillRect(term,1,1,1,h,colors.cyan)
     fillRect(term,2,1,w,1,colors.orange)
     term.setCursorPos(3,1)
     term.setBackgroundColor(colors.orange)
     term.setTextColor(colors.black)
-    term.write(trimText("SMART REMOTE "..APP_VERSION,math.max(1,w-3)))
+    term.write(trimText("POCKET REMOTE "..APP_VERSION,math.max(1,w-3)))
 
     fillRect(term,2,2,w,2,colors.black)
     term.setCursorPos(3,2)
@@ -399,8 +403,8 @@ local function draw()
 
     fillRect(term,2,3,w,5,colors.black)
     term.setCursorPos(3,3)
-    term.setTextColor(colors.cyan)
-    term.write(trimText(string.upper(state.status or "Idle"),math.max(1,w-4)))
+    term.setTextColor(colors.lightGray)
+    term.write(trimText("Status "..string.upper(state.status or "Idle"),math.max(1,w-4)))
 
     term.setCursorPos(3,4)
     term.setTextColor(colors.white)
@@ -416,44 +420,41 @@ local function draw()
     term.write(trimText(summary,math.max(1,w-2)))
     drawPill(math.max(3,w-8),5,string.format("V%.1f",tonumber(state.volume) or 1),colors.gray,colors.black)
 
-    local panelX1=2
-    local panelX2=w
+    drawPanel(2,6,w,13,colors.orange,"REMOTE")
+    remoteButton("prev",4,8,10,9,colors.orange,colors.black,"Prev",true)
+    remoteButton("play",13,7,20,9,colors.lime,colors.black,"Play",true)
+    remoteButton("stop",23,8,30,9,colors.red,colors.white,"Stop",true)
 
-    drawPanel(panelX1,6,panelX2,11,colors.orange,"TRANSPORT")
-    addActionButton("prev",3,8,9,9,colors.orange,colors.black,"Prev",true)
-    addActionButton("play",11,8,18,9,colors.lime,colors.black,"Play",true)
-    addActionButton("stop",20,8,27,9,colors.red,colors.white,"Stop",true)
-    addActionButton("next",29,8,w-1,9,colors.orange,colors.black,"Next",true)
+    remoteButton("pair",4,11,10,12,colors.cyan,colors.black,"Pair",true)
+    remoteButton("sync",13,10,20,12,colors.yellow,colors.black,"Sync",true)
+    remoteButton("speakers",23,11,30,12,colors.gray,colors.white,"Spk",true)
 
-    addActionButton("pair",3,10,9,11,colors.cyan,colors.black,"Pair",true)
-    addActionButton("sync",11,10,18,11,colors.yellow,colors.black,"Sync",true)
-    addActionButton("speakers",20,10,27,11,colors.gray,colors.white,"Spk",true)
-    addActionButton("vol_up",29,10,w-1,11,colors.brown,colors.white,"Vol+",isAdmin())
+    remoteButton("list_up",33,7,w-1,8,colors.gray,colors.white,"Up",true)
+    remoteButton("next",33,9,w-1,10,colors.orange,colors.black,"Next",true)
+    remoteButton("list_down",33,11,w-1,12,colors.gray,colors.white,"Down",true)
 
-    fillRect(term,2,12,w,12,colors.cyan)
+    fillRect(term,2,14,w,14,colors.cyan)
     term.setBackgroundColor(colors.cyan)
     term.setTextColor(colors.black)
     local listSummary=string.format("Playlist %d/%d",totalSongs>0 and math.min(scroll,totalSongs) or 0,totalSongs)
-    term.setCursorPos(3,12)
-    term.write(trimText(listSummary,math.max(1,w-14)))
-    addActionButton("list_up",w-10,12,w-6,12,colors.gray,colors.white,"Up",true)
-    addActionButton("list_down",w-5,12,w-1,12,colors.gray,colors.white,"Dn",true)
+    term.setCursorPos(3,14)
+    term.write(trimText(listSummary,math.max(1,w-3)))
 
-    fillRect(term,2,13,w,13,colors.black)
+    fillRect(term,2,15,w,15,colors.black)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.gray)
-    local shortcutLine="Enter play  Left/Right page  Up/Down select"
+    local shortcutLine="Enter play  Left/Right page"
     if isOwner() then
         shortcutLine="A add  D del  R fix  M adm  B boot"
     elseif isAdmin() then
         shortcutLine="A add  D del  R fix  [ ] volume"
     elseif not isAdmin() then
-        shortcutLine="S spk  Enter play  Left/Right page"
+        shortcutLine="S spk  Up/Down select"
     end
-    term.setCursorPos(3,13)
+    term.setCursorPos(3,15)
     term.write(trimText(shortcutLine,math.max(1,w-3)))
 
-    local top=14
+    local top=16
     local rows=math.max(1,h-top+1)
 
     for i=1,rows do
