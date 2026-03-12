@@ -1,5 +1,5 @@
 local dfpwm = require("cc.audio.dfpwm")
-local APP_VERSION = "2026.03.12-6"
+local APP_VERSION = "2026.03.12-7"
 
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
@@ -41,11 +41,12 @@ monitor.setBackgroundColor(colors.black)
 monitor.setTextColor(colors.white)
 
 local UI = {
-    header = colors.gray,
-    subHeader = colors.lightGray,
+    header = colors.lightBlue,
+    subHeader = colors.cyan,
     panel = colors.gray,
     panelDark = colors.black,
-    playing = colors.green,
+    panelAlt = colors.lightGray,
+    playing = colors.lime,
     selected = colors.blue,
     idle = colors.black,
     text = colors.white,
@@ -181,8 +182,8 @@ end
 
 local function getVisibleRows()
     local _, h = monitor.getSize()
-    local listTop = 8
-    local listBottom = h - 4
+    local listTop = 14
+    local listBottom = h - 5
     return math.max(1, listBottom - listTop + 1)
 end
 
@@ -241,6 +242,14 @@ local function drawText(x, y, text, fg, bg)
     if fg then monitor.setTextColor(fg) end
     monitor.setCursorPos(x, y)
     monitor.write(text)
+end
+
+local function fillRect(surface, x1, y1, x2, y2, bg)
+    surface.setBackgroundColor(bg)
+    for y = y1, y2 do
+        surface.setCursorPos(x1, y)
+        surface.write(string.rep(" ", math.max(0, x2 - x1 + 1)))
+    end
 end
 
 local function mapArea(name, x1, y1, x2, y2)
@@ -989,128 +998,142 @@ local function drawUI()
     buttonMap = {}
 
     local w, h = monitor.getSize()
-    monitor.setBackgroundColor(colors.black)
-    monitor.setTextColor(colors.white)
-    monitor.clear()
+    fillRect(monitor, 1, 1, w, h, colors.black)
 
-    drawFilledLine(1, UI.header)
-    drawText(2, 1, trimText("? " .. config.playerName, math.max(1, w - 16)), colors.black, UI.header)
-    drawText(math.max(2, w - 24), 1, "v" .. APP_VERSION, colors.black, UI.header)
-    drawText(math.max(2, w - 10), 1, "ID:" .. os.getComputerID(), colors.black, UI.header)
+    fillRect(monitor, 1, 1, w, 2, UI.header)
+    drawText(2, 1, "Jukebox Control", colors.black, UI.header)
+    drawText(2, 2, trimText(config.playerName, math.max(1, w - 28)), colors.black, UI.header)
+    drawText(math.max(2, w - 15), 1, "v" .. APP_VERSION, colors.black, UI.header)
+    drawText(math.max(2, w - 10), 2, "#" .. os.getComputerID(), colors.black, UI.header)
 
-    drawFilledLine(2, UI.subHeader)
-    drawText(2, 2, "Pair:" .. config.pairCode, colors.black, UI.subHeader)
-    drawText(math.max(2, w - 16), 2, "Songs:" .. #playlist, colors.black, UI.subHeader)
-    drawText(math.max(2, w - 33), 2, "Speakers:" .. getSpeakerCount(), colors.black, UI.subHeader)
-    drawText(math.max(2, w - 47), 2, "Broken:" .. getBrokenSpeakerCount(), colors.black, UI.subHeader)
-    drawText(math.max(2, w - 61), 2, "Pockets:" .. getRemoteCount(), colors.black, UI.subHeader)
+    local function drawCard(x1, x2, title, main, sub, accent)
+        fillRect(monitor, x1, 4, x2, 6, UI.panelAlt)
+        fillRect(monitor, x1, 4, x1, 6, accent)
+        drawText(x1 + 2, 4, trimText(title, math.max(1, x2 - x1 - 2)), colors.black, UI.panelAlt)
+        drawText(x1 + 2, 5, trimText(main, math.max(1, x2 - x1 - 2)), colors.black, UI.panelAlt)
+        drawText(x1 + 2, 6, trimText(sub, math.max(1, x2 - x1 - 2)), colors.gray, UI.panelAlt)
+    end
 
-    drawFilledLine(3, UI.panelDark)
-    drawText(2, 3, "Status:", UI.dim, UI.panelDark)
-    drawText(10, 3, trimText(statusText, math.max(1, w - 24)), UI.text, UI.panelDark)
-    drawText(math.max(2, w - 28), 3, "Vol:" .. string.format("%.1f", config.volume), UI.dim, UI.panelDark)
-    drawText(math.max(2, w - 12), 3, "Q/Back Exit", UI.dim, UI.panelDark)
+    local cardGap = 1
+    local cardWidth = math.max(12, math.floor((w - 5 - (cardGap * 3)) / 4))
+    local card1 = 2
+    local card2 = card1 + cardWidth + cardGap
+    local card3 = card2 + cardWidth + cardGap
+    local card4 = card3 + cardWidth + cardGap
 
-    drawFilledLine(4, UI.panelDark)
-    drawText(2, 4, "Now:", UI.accent, UI.panelDark)
-    drawText(7, 4, trimText(nowPlaying, math.max(1, w - 8)), UI.text, UI.panelDark)
+    drawCard(card1, card2 - cardGap - 1, "Pair Code", config.pairCode, "Tap Pair to refresh", colors.yellow)
+    drawCard(card2, card3 - cardGap - 1, "Library", tostring(#playlist) .. " tracks", "Sel " .. tostring(selectedIndex) .. " / Now " .. tostring(currentIndex), colors.cyan)
+    drawCard(card3, card4 - cardGap - 1, "Network", tostring(getRemoteCount()) .. " pockets", tostring(getSpeakerCount()) .. " speakers", colors.orange)
+    drawCard(card4, w - 1, "Output", "Vol " .. string.format("%.1f", config.volume), tostring(getBrokenSpeakerCount()) .. " broken nodes", colors.lime)
 
-    drawFilledLine(5, UI.panelDark)
-    drawText(2, 5, "Selected:", UI.dim, UI.panelDark)
+    fillRect(monitor, 2, 8, w - 1, 11, UI.panelDark)
+    drawText(3, 8, playing and "LIVE PLAYBACK" or "STANDBY", playing and colors.lime or colors.orange, UI.panelDark)
+    drawText(math.max(3, w - 18), 8, "Q/Back Exit", UI.dim, UI.panelDark)
+    drawText(3, 9, trimText(nowPlaying, math.max(1, w - 4)), UI.text, UI.panelDark)
+
     local selectedName = (#playlist > 0 and playlist[selectedIndex] and playlist[selectedIndex].name) or "None"
-    drawText(12, 5, trimText(selectedName, math.max(1, w - 13)), UI.text, UI.panelDark)
+    drawText(3, 10, trimText("Selected: " .. selectedName, math.max(1, w - 4)), UI.dim, UI.panelDark)
 
-    drawFilledLine(6, UI.panelDark)
-    local barX = 2
-    local barY = 6
-    local barW = math.max(10, w - 4)
+    local barX = 3
+    local barY = 11
+    local barW = math.max(10, w - 6)
     local fill = math.floor(barW * getProgressValue())
 
     monitor.setBackgroundColor(UI.progressBg)
     monitor.setCursorPos(barX, barY)
     monitor.write(string.rep(" ", barW))
-
     if fill > 0 then
         monitor.setBackgroundColor(UI.progressFill)
         monitor.setCursorPos(barX, barY)
         monitor.write(string.rep(" ", fill))
     end
-
     monitor.setBackgroundColor(UI.panelDark)
     monitor.setTextColor(colors.black)
     local label = playing and " PLAYING " or " STOPPED "
-    local labelX = math.max(2, math.floor((w - #label) / 2))
-    monitor.setCursorPos(labelX, barY)
+    monitor.setCursorPos(math.max(barX, math.floor((w - #label) / 2)), barY)
     monitor.write(label)
 
-    local listTop = 8
-    local listBottom = h - 4
-    local rows = math.max(1, listBottom - listTop + 1)
+    fillRect(monitor, 1, 13, w, 13, UI.subHeader)
+    drawText(2, 13, "Playlist", colors.black, UI.subHeader)
+    local rangeStart = #playlist > 0 and math.min(listScroll, #playlist) or 0
+    local rangeEnd = #playlist > 0 and math.min(#playlist, listScroll + getVisibleRows() - 1) or 0
+    local rangeText = string.format("%d-%d / %d", rangeStart, rangeEnd, #playlist)
+    drawText(math.max(2, w - #rangeText - 1), 13, rangeText, colors.black, UI.subHeader)
 
+    local listTop = 14
+    local listBottom = h - 5
+    local rows = math.max(1, listBottom - listTop + 1)
     local startIndex = listScroll
 
     for row = 0, rows - 1 do
         local idx = startIndex + row
         local y = listTop + row
-        local bg = UI.idle
-        local fg = UI.text
+        local bg = (row % 2 == 0) and colors.black or colors.gray
+        local fg = (row % 2 == 0) and UI.text or colors.black
 
-        drawFilledLine(y, bg)
+        if idx == currentIndex and playing then
+            bg = UI.playing
+            fg = colors.black
+        elseif idx == selectedIndex then
+            bg = UI.selected
+            fg = colors.white
+        end
+
+        fillRect(monitor, 1, y, w, y, bg)
 
         if playlist[idx] then
+            local marker = " "
             if idx == currentIndex and playing then
-                bg = UI.playing
-                fg = colors.black
+                marker = ">"
             elseif idx == selectedIndex then
-                bg = UI.selected
-                fg = colors.white
+                marker = "*"
             end
 
-            drawFilledLine(y, bg)
-            monitor.setBackgroundColor(bg)
-            monitor.setTextColor(fg)
-            monitor.setCursorPos(2, y)
-
-            local sourceTag = "[FILE] "
+            local sourceTag = "FILE"
             if playlist[idx].ytId then
-                sourceTag = "[YT] "
+                sourceTag = "YT"
             elseif playlist[idx].url then
-                sourceTag = "[URL] "
+                sourceTag = "URL"
             end
-            local line = string.format("%02d %s%s", idx, sourceTag, playlist[idx].name or "Unknown")
-            monitor.write(trimText(line, math.max(1, w - 2)))
 
+            local line = string.format("%s %02d [%s] %s", marker, idx, sourceTag, playlist[idx].name or "Unknown")
+            drawText(2, y, trimText(line, math.max(1, w - 2)), fg, bg)
             mapArea("song:" .. idx, 1, y, w, y)
         end
     end
 
-    local by = h - 2
-    local x = 2
-    addButton("prev",   x, by, x + 6, by + 1, UI.buttonPrev,   colors.black, "Prev")
-    x = x + 8
-    addButton("play",   x, by, x + 6, by + 1, UI.buttonPlay,   colors.black, "Play")
-    x = x + 8
-    addButton("stop",   x, by, x + 6, by + 1, UI.buttonStop,   colors.white, "Stop")
-    x = x + 8
-    addButton("next",   x, by, x + 6, by + 1, UI.buttonNext,   colors.black, "Next")
-    x = x + 8
-    addButton("add",    x, by, x + 6, by + 1, UI.buttonAdd,    colors.black, "Add")
-    x = x + 8
-    addButton("delete", x, by, x + 8, by + 1, UI.buttonDelete, colors.white, "Delete")
-    x = x + 10
-    addButton("list_up", x, by, x + 5, by + 1, colors.gray, colors.white, "Up")
-    x = x + 7
-    addButton("list_down", x, by, x + 5, by + 1, colors.gray, colors.white, "Down")
-    x = x + 7
-    addButton("vol_down", x, by, x + 4, by + 1, colors.brown, colors.white, "V-")
-    x = x + 6
-    addButton("vol_up", x, by, x + 4, by + 1, colors.brown, colors.white, "V+")
-    x = x + 6
-    addButton("pair",   x, by, x + 8, by + 1, UI.buttonPair,   colors.black, "NewCode")
-    x = x + 10
-    addButton("restart_speakers", x, by, x + 10, by + 1, colors.lightBlue, colors.black, "FixSpk")
-    x = x + 12
-    addButton("restart_jukebox", x, by, x + 10, by + 1, colors.red, colors.white, "Reboot")
+    local function drawButtonRow(y1, y2, defs)
+        local gap = 1
+        local count = #defs
+        local width = math.max(6, math.floor((w - 2 - ((count - 1) * gap)) / count))
+        local x = 1
+
+        for index, def in ipairs(defs) do
+            local x1 = x
+            local x2 = (index == count) and w or math.min(w, x1 + width - 1)
+            addButton(def.name, x1, y1, x2, y2, def.bg, def.fg, def.label)
+            x = x2 + gap + 1
+        end
+    end
+
+    drawButtonRow(h - 3, h - 2, {
+        { name = "prev", bg = UI.buttonPrev, fg = colors.black, label = "Prev" },
+        { name = "play", bg = UI.buttonPlay, fg = colors.black, label = "Play" },
+        { name = "stop", bg = UI.buttonStop, fg = colors.white, label = "Stop" },
+        { name = "next", bg = UI.buttonNext, fg = colors.black, label = "Next" },
+        { name = "add", bg = UI.buttonAdd, fg = colors.black, label = "Add" },
+        { name = "delete", bg = UI.buttonDelete, fg = colors.white, label = "Delete" },
+    })
+
+    drawButtonRow(h - 1, h, {
+        { name = "list_up", bg = colors.gray, fg = colors.white, label = "Up" },
+        { name = "list_down", bg = colors.gray, fg = colors.white, label = "Down" },
+        { name = "vol_down", bg = colors.brown, fg = colors.white, label = "V-" },
+        { name = "vol_up", bg = colors.brown, fg = colors.white, label = "V+" },
+        { name = "pair", bg = UI.buttonPair, fg = colors.black, label = "Pair" },
+        { name = "restart_speakers", bg = colors.lightBlue, fg = colors.black, label = "FixSpk" },
+        { name = "restart_jukebox", bg = colors.red, fg = colors.white, label = "Reboot" },
+    })
 end
 
 local function broadcastSpeakerChunk(chunk)

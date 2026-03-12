@@ -1,7 +1,7 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-6"
+local APP_VERSION = "2026.03.12-8"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
 
@@ -58,6 +58,21 @@ local function trim(s)
     return (s:gsub("^%s+",""):gsub("%s+$",""))
 end
 
+local function trimText(text,maxLen)
+    text=tostring(text or "")
+    if #text<=maxLen then return text end
+    if maxLen<=3 then return text:sub(1,maxLen) end
+    return text:sub(1,maxLen-3).."..."
+end
+
+local function fillRect(surface,x1,y1,x2,y2,bg)
+    surface.setBackgroundColor(bg)
+    for y=y1,y2 do
+        surface.setCursorPos(x1,y)
+        surface.write(string.rep(" ",math.max(0,x2-x1+1)))
+    end
+end
+
 ------------------------------------------------
 -- FILE SAVE / LOAD
 ------------------------------------------------
@@ -84,25 +99,31 @@ local function clearButtons()
     buttons={}
 end
 
-local function addButton(name,x1,y1,x2,y2,bg,fg,label)
+local function addActionButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
+    if enabled==nil then enabled=true end
 
-    term.setBackgroundColor(bg)
-    term.setTextColor(fg)
+    local drawBg=enabled and bg or colors.gray
+    local drawFg=enabled and fg or colors.lightGray
+
+    term.setBackgroundColor(drawBg)
+    term.setTextColor(drawFg)
 
     for y=y1,y2 do
-        buttons[y]=buttons[y] or {}
         term.setCursorPos(x1,y)
         term.write(string.rep(" ",x2-x1+1))
-        for x=x1,x2 do
-            buttons[y][x]=name
+        if enabled then
+            buttons[y]=buttons[y] or {}
+            for x=x1,x2 do
+                buttons[y][x]=name
+            end
         end
     end
 
-    local tx=math.floor((x1+x2-#label)/2)
+    local tx=math.max(x1,math.floor((x1+x2-#label)/2))
     local ty=math.floor((y1+y2)/2)
 
     term.setCursorPos(tx,ty)
-    term.write(label)
+    term.write(trimText(label,math.max(1,x2-x1+1)))
 end
 
 ------------------------------------------------
@@ -141,8 +162,8 @@ end
 
 local function visibleRows()
     local _,h=term.getSize()
-    local top=20
-    return math.max(1,h-top)
+    local top=12
+    return math.max(1,h-top+1)
 end
 
 local function clampScroll()
@@ -159,6 +180,30 @@ local function ensureSelectionVisible()
     elseif selected>(scroll+rows-1) then
         scroll=selected-rows+1
     end
+    clampScroll()
+end
+
+local function selectSong(index)
+    index=tonumber(index)
+    if not index or not state.playlist or not state.playlist[index] then
+        return
+    end
+    send("select",{index=index})
+end
+
+local function moveSelection(delta)
+    if not state.playlist or #state.playlist==0 then
+        return
+    end
+
+    local nextIndex=(tonumber(state.selectedIndex) or 1)+delta
+    if nextIndex<1 then nextIndex=1 end
+    if nextIndex>#state.playlist then nextIndex=#state.playlist end
+    selectSong(nextIndex)
+end
+
+local function pageScroll(delta)
+    scroll=scroll+(visibleRows()*delta)
     clampScroll()
 end
 
@@ -309,112 +354,135 @@ end
 ------------------------------------------------
 
 local function draw()
-
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.white)
     term.clear()
-
     clearButtons()
 
     local w,h=term.getSize()
+    fillRect(term,1,1,w,h,colors.black)
 
-    term.setCursorPos(1,1)
+    fillRect(term,1,1,w,1,colors.lightBlue)
+    term.setCursorPos(2,1)
+    term.setBackgroundColor(colors.lightBlue)
+    term.setTextColor(colors.black)
+    term.write(trimText("Pocket Jukebox "..APP_VERSION,math.max(1,w-2)))
+
+    fillRect(term,1,2,w,2,colors.gray)
+    term.setCursorPos(2,2)
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
-    term.write(string.rep(" ",w))
-    term.setCursorPos(2,1)
-    term.write("Pocket Jukebox v"..APP_VERSION)
+    term.write(trimText(pairData.targetName or "No target",math.max(1,w-10)))
+    term.setCursorPos(math.max(2,w-7),2)
+    term.setTextColor(isOnline() and colors.lime or colors.red)
+    term.write(isOnline() and "ONLINE" or "OFFLINE")
 
-    term.setBackgroundColor(colors.black)
+    fillRect(term,1,3,w,4,colors.black)
+    term.setCursorPos(2,3)
+    term.setTextColor(colors.cyan)
+    term.write(trimText((state.status or "Idle").." | "..string.upper(state.remoteRole or "guest"),math.max(1,w-2)))
 
-    term.setCursorPos(1,3)
-    print("Target: "..(pairData.targetName or "None"))
+    term.setCursorPos(2,4)
+    term.setTextColor(colors.white)
+    term.write(trimText(state.nowPlaying or "Nothing",math.max(1,w-2)))
 
-    term.setCursorPos(1,4)
-    print("Jukebox: "..(isOnline() and "Online" or "Offline"))
-
-    term.setCursorPos(1,5)
-    print("Status: "..state.status)
-
-    term.setCursorPos(1,6)
-    print("Now: "..state.nowPlaying)
-
-    term.setCursorPos(1,7)
-    print("Role: "..(state.remoteRole or "guest").." Vol:"..string.format("%.1f", tonumber(state.volume) or 1))
-
-    term.setCursorPos(1,8)
     local onlineSpeakers=tonumber(state.onlineSpeakerCount) or 0
-    print("Spk: "..tostring(onlineSpeakers).."/"..tostring(state.speakerCount or 0).." Broken:"..tostring(state.brokenSpeakerCount or 0))
+    local totalSpeakers=tonumber(state.speakerCount) or 0
+    local brokenSpeakers=tonumber(state.brokenSpeakerCount) or 0
+    local selectedIndex=tonumber(state.selectedIndex) or 0
+    local totalSongs=tonumber(state.count) or #(state.playlist or {})
+    local summary=string.format("Sel:%d/%d Sp:%d/%d V:%.1f",selectedIndex,totalSongs,onlineSpeakers,totalSpeakers,tonumber(state.volume) or 1)
+    term.setCursorPos(2,5)
+    term.setTextColor(colors.lightGray)
+    term.write(trimText(summary,math.max(1,w-2)))
+    term.setCursorPos(2,6)
+    term.write(trimText("Broken:"..tostring(brokenSpeakers).."  Tap song to select",math.max(1,w-2)))
 
-    term.setCursorPos(1,9)
-    print("Q/Back = Exit")
-
-    ------------------------------------------------
-    -- BUTTONS
-    ------------------------------------------------
-
-    addButton("prev",2,11,9,12,colors.orange,colors.black,"Prev")
-    addButton("play",11,11,18,12,colors.lime,colors.black,"Play")
-    addButton("stop",20,11,27,12,colors.red,colors.white,"Stop")
-    addButton("next",29,11,36,12,colors.orange,colors.black,"Next")
-
-    addButton("pair",2,13,9,14,colors.cyan,colors.black,"Pair")
-    addButton("sync",11,13,18,14,colors.yellow,colors.black,"Sync")
-    addButton("restart",20,13,29,14,colors.lightBlue,colors.black,"FixSpk")
-    addButton("speakers",31,13,40,14,colors.gray,colors.white,"SpkInfo")
-
-    if isAdmin() then
-        addButton("add",2,15,9,16,colors.green,colors.black,"Add")
-        addButton("delete",11,15,20,16,colors.purple,colors.white,"Delete")
-        addButton("vol_down",22,15,28,16,colors.brown,colors.white,"V-")
-        addButton("vol_up",30,15,36,16,colors.brown,colors.white,"V+")
+    local gridTop=7
+    local colGap=1
+    local cols=4
+    local colWidth=math.max(4,math.floor((w-(cols-1)*colGap)/cols))
+    local function colBounds(col)
+        local x1=((col-1)*(colWidth+colGap))+1
+        local x2=(col==cols) and w or (x1+colWidth-1)
+        return x1,x2
     end
 
-    if isOwner() then
-        addButton("admins",2,17,11,18,colors.lightGray,colors.black,"Admins")
-        addButton("reboot",13,17,22,18,colors.red,colors.white,"Reboot")
+    local function gridButton(name,row,col,bg,fg,label,enabled)
+        local y1=gridTop+((row-1)*2)
+        local y2=y1+1
+        local x1,x2=colBounds(col)
+        addActionButton(name,x1,y1,x2,y2,bg,fg,label,enabled)
     end
 
-    addButton("list_up",24,17,31,18,colors.gray,colors.white,"Up")
-    addButton("list_down",33,17,40,18,colors.gray,colors.white,"Down")
+    gridButton("prev",1,1,colors.orange,colors.black,"Prev",true)
+    gridButton("play",1,2,colors.lime,colors.black,"Play",true)
+    gridButton("stop",1,3,colors.red,colors.white,"Stop",true)
+    gridButton("next",1,4,colors.orange,colors.black,"Next",true)
 
-    ------------------------------------------------
-    -- PLAYLIST
-    ------------------------------------------------
+    gridButton("pair",2,1,colors.cyan,colors.black,"Pair",true)
+    gridButton("sync",2,2,colors.yellow,colors.black,"Sync",true)
+    gridButton("list_up",2,3,colors.gray,colors.white,"Up",true)
+    gridButton("list_down",2,4,colors.gray,colors.white,"Dn",true)
 
-    local top=20
-    local rows=h-top
+    gridButton("add",3,1,colors.green,colors.black,"Add",isAdmin())
+    gridButton("delete",3,2,colors.purple,colors.white,"Del",isAdmin())
+    gridButton("vol_down",3,3,colors.brown,colors.white,"V-",isAdmin())
+    gridButton("vol_up",3,4,colors.brown,colors.white,"V+",isAdmin())
+
+    gridButton("speakers",4,1,colors.gray,colors.white,"Spk",true)
+    gridButton("restart",4,2,colors.lightBlue,colors.black,"Fix",isAdmin())
+    gridButton("admins",4,3,colors.lightGray,colors.black,"Adm",isOwner())
+    gridButton("reboot",4,4,colors.red,colors.white,"Boot",isOwner())
+
+    fillRect(term,1,11,w,11,colors.gray)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.black)
+    local listSummary=string.format("Playlist %d/%d",totalSongs>0 and math.min(scroll,totalSongs) or 0,totalSongs)
+    term.setCursorPos(2,11)
+    term.write(trimText(listSummary,math.max(1,w-2)))
+
+    local top=12
+    local rows=math.max(1,h-top+1)
 
     for i=1,rows do
-
         local idx=scroll+i-1
         local y=top+i-1
+        local bg=(i%2==0) and colors.gray or colors.black
+        local fg=(i%2==0) and colors.black or colors.white
 
-        term.setCursorPos(1,y)
-        term.setBackgroundColor(colors.black)
-        term.write(string.rep(" ",w))
+        if idx==state.selectedIndex then
+            bg=colors.blue
+            fg=colors.white
+        end
+
+        if idx==state.currentIndex and state.playing then
+            bg=colors.lime
+            fg=colors.black
+        end
+
+        fillRect(term,1,y,w,y,bg)
 
         if state.playlist[idx] then
-
-            local bg=colors.black
-            local fg=colors.white
-
-            if idx==state.selectedIndex then
-                bg=colors.blue
-            end
-
+            local marker=" "
             if idx==state.currentIndex and state.playing then
-                bg=colors.green
-                fg=colors.black
+                marker=">"
+            elseif idx==state.selectedIndex then
+                marker="*"
             end
 
+            local source="F"
+            if state.playlist[idx].ytId then
+                source="Y"
+            elseif state.playlist[idx].url then
+                source="U"
+            end
+
+            local line=string.format("%s%02d %s %s",marker,idx,source,state.playlist[idx].name or "Unknown")
+            term.setCursorPos(1,y)
             term.setBackgroundColor(bg)
             term.setTextColor(fg)
-
-            local name=state.playlist[idx].name or "Unknown"
-
-            term.setCursorPos(1,y)
-            term.write(string.format("%02d %s",idx,name))
+            term.write(trimText(line,w))
 
             buttons[y]=buttons[y] or {}
             for x=1,w do
@@ -616,16 +684,14 @@ local function uiLoop()
                     send("volume_up")
 
                 elseif hit=="list_up" then
-                    scroll=scroll-visibleRows()
-                    clampScroll()
+                    pageScroll(-1)
 
                 elseif hit=="list_down" then
-                    scroll=scroll+visibleRows()
-                    clampScroll()
+                    pageScroll(1)
 
                 elseif hit:sub(1,5)=="song:" then
                     local id=tonumber(hit:sub(6))
-                    send("select",{index=id})
+                    selectSong(id)
                 end
             end
         elseif e[1]=="mouse_scroll" then
@@ -639,18 +705,22 @@ local function uiLoop()
             if prot==PROTOCOL_STATE and id==pairData.targetId then
                 state=msg
                 lastStateAt=os.clock()
-                clampScroll()
+                ensureSelectionVisible()
             end
         elseif e[1]=="key" then
             if e[2]==keys.q or e[2]==keys.backspace then
                 showMessage({"Closing Pocket Jukebox..."},0.5)
                 return
             elseif e[2]==keys.up then
-                scroll=scroll-1
-                clampScroll()
+                moveSelection(-1)
             elseif e[2]==keys.down then
-                scroll=scroll+1
-                clampScroll()
+                moveSelection(1)
+            elseif e[2]==keys.left then
+                pageScroll(-1)
+            elseif e[2]==keys.right then
+                pageScroll(1)
+            elseif e[2]==keys.enter then
+                send("play")
             end
         end
     end
