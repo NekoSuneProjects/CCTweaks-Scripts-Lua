@@ -1,9 +1,9 @@
 local APP_NAME = "speaker_node_v2"
 local APP_PATH = "/speaker_node_v2.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/speaker_node_v2.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/speaker_node_v2.lua"
 local STARTUP_PATH = "/startup.lua"
 local BACKUP_PATH = "/startup_speaker_node_backup.lua"
-local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/startup_speaker_node.lua"
+local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/startup_speaker_node.lua"
 
 local function readFile(path)
     if not fs.exists(path) then

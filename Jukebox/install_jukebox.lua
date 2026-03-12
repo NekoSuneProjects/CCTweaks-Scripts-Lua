@@ -1,8 +1,8 @@
 local APP_NAME = "jukebox_v2"
 local APP_PATH = "/jukebox_v2.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/jukebox_v2.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/jukebox_v2.lua"
 local STARTUP_PATH = "/startup.lua"
-local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/startup_jukebox.lua"
+local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/startup_jukebox.lua"
 local BACKUP_PATH = "/startup_jukebox_backup.lua"
 
 local function readFile(path)

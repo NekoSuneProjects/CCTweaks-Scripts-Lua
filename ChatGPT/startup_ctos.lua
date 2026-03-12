@@ -1,6 +1,6 @@
 local APP_NAME = "CTOS"
 local APP_PATH = "/ctos_chatgpt_v1.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/ChatGPT/ctos_chatgpt_v1.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/ctos_chatgpt_v1.lua"
 local SKIP_DELAY = 3
 
 local function readFile(path)

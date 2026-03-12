@@ -64,7 +64,7 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/install_jukebox.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_jukebox.lua
 ```
 
 What it does:
@@ -83,7 +83,7 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/install_pocket_remote.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_pocket_remote.lua
 ```
 
 What it does:
@@ -110,7 +110,7 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/install_speaker_node.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_speaker_node.lua
 ```
 
 What it does:
@@ -222,7 +222,7 @@ Original code by `0x00sec`, modified by `NekoSuneVR`.
 ### Install ChatGPT
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/ChatGPT/install_ctos.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/install_ctos.lua
 ```
 
 What it does:

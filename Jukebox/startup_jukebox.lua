@@ -1,6 +1,6 @@
 local APP_NAME = "jukebox_v2"
 local APP_PATH = "/jukebox_v2.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/jukebox_v2.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/jukebox_v2.lua"
 local SKIP_DELAY = 3
 
 local function extractVersion(data)

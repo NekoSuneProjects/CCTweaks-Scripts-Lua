@@ -1,8 +1,8 @@
 local APP_NAME = "CTOS"
 local APP_PATH = "/ctos_chatgpt_v1.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/ChatGPT/ctos_chatgpt_v1.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/ctos_chatgpt_v1.lua"
 local STARTUP_PATH = "/startup.lua"
-local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/ChatGPT/startup_ctos.lua"
+local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/startup_ctos.lua"
 local BACKUP_PATH = "/startup_ctos_backup.lua"
 
 local function readFile(path)

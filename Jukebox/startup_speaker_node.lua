@@ -1,6 +1,6 @@
 local APP_NAME = "speaker_node_v2"
 local APP_PATH = "/speaker_node_v2.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/main/Jukebox/speaker_node_v2.lua"
+local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/speaker_node_v2.lua"
 local SKIP_DELAY = 3
 
 local function extractVersion(data)
