@@ -1,9 +1,13 @@
 local APP_NAME = "CTOS"
 local APP_PATH = "/ctos_chatgpt_v1.lua"
-local APP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/ctos_chatgpt_v1.lua"
 local STARTUP_PATH = "/startup.lua"
-local STARTUP_URL = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/startup_ctos.lua"
 local BACKUP_PATH = "/startup_ctos_backup.lua"
+local REPO_ROOT = "https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/"
+
+local BRANCH_OPTIONS = {
+    { key = "1", label = "Release", branch = "RELEASE" },
+    { key = "2", label = "Beta", branch = "BETA" },
+}
 
 local function readFile(path)
     if not fs.exists(path) then return nil end
@@ -30,8 +34,32 @@ local function download(url)
     return data
 end
 
-local function installStartup()
-    local startup = download(STARTUP_URL)
+local function chooseBranch()
+    while true do
+        print("Select channel:")
+        for _, option in ipairs(BRANCH_OPTIONS) do
+            print(option.key .. ". " .. option.label)
+        end
+        write("> ")
+
+        local choice = read()
+        for _, option in ipairs(BRANCH_OPTIONS) do
+            if choice == option.key then
+                return option
+            end
+        end
+
+        print("Invalid selection. Try again.")
+        print("")
+    end
+end
+
+local function makeUrl(branch, file)
+    return REPO_ROOT .. branch .. "/ChatGPT/" .. file
+end
+
+local function installStartup(startupUrl)
+    local startup = download(startupUrl)
     local current = readFile(STARTUP_PATH)
     if current and current ~= startup and not fs.exists(BACKUP_PATH) then
         writeFile(BACKUP_PATH, current)
@@ -39,17 +67,21 @@ local function installStartup()
     writeFile(STARTUP_PATH, startup)
 end
 
-local function installApp()
-    writeFile(APP_PATH, download(APP_URL))
+local function installApp(appUrl)
+    writeFile(APP_PATH, download(appUrl))
 end
 
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
 term.clear()
 term.setCursorPos(1, 1)
+local branchOption = chooseBranch()
+local appUrl = makeUrl(branchOption.branch, "ctos_chatgpt_v1.lua")
+local startupUrl = makeUrl(branchOption.branch, "startup_ctos.lua")
+print("")
 print("Installing " .. APP_NAME .. "...")
-installStartup()
-installApp()
+installStartup(startupUrl)
+installApp(appUrl)
 print("Installed startup updater to " .. STARTUP_PATH)
 print("Launching " .. APP_NAME .. "...")
 sleep(0.5)

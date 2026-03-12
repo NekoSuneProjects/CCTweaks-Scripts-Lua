@@ -45,6 +45,8 @@ The Jukebox system is a wireless music player setup for CC: Tweaked with:
 - `Jukebox/jukebox_v2.lua`
 - `Jukebox/pocket_remote_v2.lua`
 - `Jukebox/speaker_node_v2.lua`
+- `install.lua`
+- `Jukebox/install.lua`
 - `Jukebox/install_jukebox.lua`
 - `Jukebox/install_pocket_remote.lua`
 - `Jukebox/install_speaker_node.lua`
@@ -64,13 +66,15 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_jukebox.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/install.lua
 ```
+
+The installer asks for `Jukebox` or `ChatGPT`, then `Release` or `Beta`. If you choose `Jukebox`, it then asks for `Jukebox host`, `Pocket remote`, or `Speaker node`.
 
 ## For our BETA Testing
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_jukebox.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/install.lua
 ```
 
 What it does:
@@ -89,13 +93,15 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_pocket_remote.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/install.lua
 ```
+
+The installer asks for `Jukebox` or `ChatGPT`, then `Release` or `Beta`. If you choose `Jukebox`, it then asks for `Jukebox host`, `Pocket remote`, or `Speaker node`.
 
 ## For our BETA Testing
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_pocket_remote.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/install.lua
 ```
 
 What it does:
@@ -122,13 +128,15 @@ Needed peripherals:
 Install:
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/Jukebox/install_speaker_node.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/install.lua
 ```
+
+The installer asks for `Jukebox` or `ChatGPT`, then `Release` or `Beta`. If you choose `Jukebox`, it then asks for `Jukebox host`, `Pocket remote`, or `Speaker node`.
 
 ## For our BETA Testing
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/Jukebox/install_speaker_node.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/install.lua
 ```
 
 What it does:
@@ -240,13 +248,15 @@ Original code by `0x00sec`, modified by `NekoSuneVR`.
 ### Install ChatGPT
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/ChatGPT/install_ctos.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/RELEASE/install.lua
 ```
+
+The installer asks for `Jukebox` or `ChatGPT`, then `Release` or `Beta`. Choosing `ChatGPT` installs CTOS.
 
 ## For our BETA Testing
 
 ```lua
-wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/ChatGPT/install_ctos.lua
+wget run https://raw.githubusercontent.com/NekoSuneProjects/CCTweaks-Scripts-Lua/BETA/install.lua
 ```
 
 What it does:
