@@ -850,6 +850,53 @@ addSongEntry = function(name, url)
     return true
 end
 
+local function addSongEntries(entries)
+    if type(entries) ~= "table" then
+        return false, "Missing entries"
+    end
+
+    local added = 0
+
+    for _, entry in ipairs(entries) do
+        if type(entry) == "table" then
+            local name = trim(entry.name)
+            local artist = trim(entry.artist)
+            local url = trim(entry.url)
+            local ytId = trim(entry.ytId)
+
+            if name ~= "" then
+                if ytId ~= "" then
+                    table.insert(playlist, {
+                        name = name,
+                        artist = artist ~= "" and artist or "YouTube",
+                        ytId = ytId,
+                        source = "youtube",
+                    })
+                    added = added + 1
+                elseif url ~= "" then
+                    table.insert(playlist, {
+                        name = name,
+                        url = url,
+                    })
+                    added = added + 1
+                end
+            end
+        end
+    end
+
+    if added == 0 then
+        return false, "Nothing addable"
+    end
+
+    savePlaylist()
+    selectedIndex = #playlist
+    currentIndex = selectedIndex
+    ensureSelectedVisible()
+    markDirty()
+    broadcastStateToPaired()
+    return true, added
+end
+
 local function grantAdmin(requesterId, targetId)
     if not isOwnerRemote(requesterId) then
         return false, "Owner only"
@@ -948,6 +995,17 @@ local function handleRemoteCommand(id, msg)
             return
         end
         local ok = addSongEntry(msg.name, msg.url)
+        if not ok then
+            statusText = "Pocket add failed"
+            markDirty()
+            broadcastStateToPaired()
+        end
+    elseif msg.action == "add_entries" then
+        if not isAdminRemote(id) then
+            sendStateToRemote(id)
+            return
+        end
+        local ok = addSongEntries(msg.entries)
         if not ok then
             statusText = "Pocket add failed"
             markDirty()
