@@ -1,9 +1,11 @@
 local PROTOCOL_DISCOVERY = "jukebox_v2_discovery"
 local PROTOCOL_CONTROL   = "jukebox_v2_control"
 local PROTOCOL_STATE     = "jukebox_v2_state"
-local APP_VERSION = "2026.03.12-12"
+local APP_VERSION = "2026.03.13-01"
 
 local DATA_FILE = "/pocket_jukebox_pair.db"
+local API_BASE_URL  = "https://ipod-2to6magyna-uc.a.run.app/"
+local API_VERSION   = "2.1"
 
 local modem = peripheral.find("modem")
 if not modem then error("Wireless modem required") end
@@ -215,6 +217,156 @@ local function sendHeartbeat()
         remoteName=remoteName
     },PROTOCOL_CONTROL)
     send("request_state")
+end
+
+------------------------------------------------
+-- API HELPERS
+------------------------------------------------
+
+local function buildApiUrl(params)
+    local out = API_BASE_URL .. "?v=" .. textutils.urlEncode(API_VERSION)
+    for key, value in pairs(params) do
+        out = out .. "&" .. textutils.urlEncode(key) .. "=" .. textutils.urlEncode(tostring(value))
+    end
+    return out
+end
+
+local function fetchJson(url)
+    if not http then
+        return nil, "HTTP API is disabled"
+    end
+
+    local response, err = http.get(url, nil, true)
+    if not response then
+        return nil, tostring(err or "Request failed")
+    end
+
+    local raw = response.readAll()
+    response.close()
+
+    local data = textutils.unserialiseJSON(raw)
+    if type(data) ~= "table" then
+        return nil, "Invalid JSON response"
+    end
+
+    return data
+end
+
+local function getUrlParam(url, key)
+    if type(url) ~= "string" or type(key) ~= "string" then
+        return nil
+    end
+
+    return url:match("[?&]" .. key .. "=([^&#]+)")
+end
+
+local function getYoutubePlaylistId(query)
+    if type(query) ~= "string" then
+        return nil
+    end
+
+    local lower = query:lower()
+    if not lower:find("youtube%.com", 1) and not lower:find("youtu%.be", 1) then
+        return nil
+    end
+
+    return getUrlParam(query, "list")
+end
+
+local function findPlaylistResult(results, playlistId)
+    if type(results) ~= "table" then
+        return nil
+    end
+
+    local fallback = nil
+
+    for index, item in ipairs(results) do
+        if item and item.type == "playlist" and type(item.playlist_items) == "table" then
+            if not fallback then
+                fallback = index
+            end
+
+            if playlistId then
+                if item.id == playlistId or item.playlistId == playlistId then
+                    return index
+                end
+
+                local itemPlaylistId = getUrlParam(item.url, "list")
+                if itemPlaylistId == playlistId then
+                    return index
+                end
+            end
+        end
+    end
+
+    return fallback
+end
+
+local function normalizeYoutubeItem(item)
+    if type(item) ~= "table" then
+        return nil
+    end
+
+    if type(item.id) ~= "string" or item.id == "" then
+        return nil
+    end
+
+    return {
+        name = item.name or item.title or "Unknown",
+        artist = item.artist or item.channel or "YouTube",
+        ytId = item.id,
+        source = "youtube"
+    }
+end
+
+local function buildYoutubeEntries(results, index)
+    local chosen = results[index]
+    if not chosen then
+        return nil, "Invalid selection"
+    end
+
+    local entries = {}
+
+    if chosen.type == "playlist" and type(chosen.playlist_items) == "table" then
+        for _, item in ipairs(chosen.playlist_items) do
+            local entry = normalizeYoutubeItem(item)
+            if entry then
+                entries[#entries + 1] = entry
+            end
+        end
+    else
+        local entry = normalizeYoutubeItem(chosen)
+        if entry then
+            entries[1] = entry
+        end
+    end
+
+    if #entries == 0 then
+        return nil, "Nothing addable in result"
+    end
+
+    return entries
+end
+
+local function sendEntriesInBatches(entries)
+    local total = type(entries) == "table" and #entries or 0
+    if total == 0 then
+        return 0
+    end
+
+    local batchSize = 8
+
+    for startIndex = 1, total, batchSize do
+        local batch = {}
+        local endIndex = math.min(total, startIndex + batchSize - 1)
+        for index = startIndex, endIndex do
+            batch[#batch + 1] = entries[index]
+        end
+        send("add_entries", {entries = batch})
+    end
+
+    send("request_state")
+    return total
 end
 
 ------------------------------------------------
@@ -561,23 +713,104 @@ local function promptAddSong()
     term.setTextColor(colors.white)
     term.clear()
     term.setCursorPos(1,1)
-    print("Add Song By URL")
+    print("Add Song")
     print("")
-    print("Name:")
-    local name=read()
-    if not name or trim(name)=="" then
+    print("1 = Stream URL")
+    print("2 = YouTube search / URL")
+    print("")
+    print("Choose mode:")
+    local mode=read()
+
+    if mode=="1" then
+        print("")
+        print("Song name:")
+        local name=read()
+        if not name or trim(name)=="" then
+            return
+        end
+
+        print("")
+        print("Enter stream URL:")
+        local url=read()
+        if not url or trim(url)=="" then
+            return
+        end
+
+        send("add_url",{name=name,url=url})
+        send("request_state")
+        return
+    end
+
+    if mode~="2" then
+        showMessage({"Invalid mode"},1.2)
         return
     end
 
     print("")
-    print("URL:")
-    local url=read()
-    if not url or trim(url)=="" then
+    print("YouTube Search / Link")
+    print("")
+    print("Enter search text or YouTube URL:")
+    local query=read()
+    if not query or trim(query)=="" then
         return
     end
 
-    send("add_url",{name=name,url=url})
-    send("request_state")
+    print("")
+    print("Searching...")
+
+    local results,err=fetchJson(buildApiUrl({search=query}))
+    if not results then
+        showMessage({"YouTube search failed",trimText(err or "Unknown error",26)},2)
+        return
+    end
+
+    if #results==0 then
+        showMessage({"No results"},1.5)
+        return
+    end
+
+    local playlistId=getYoutubePlaylistId(query)
+    if playlistId then
+        local playlistIndex=findPlaylistResult(results,playlistId)
+        if playlistIndex then
+            local entries,buildErr=buildYoutubeEntries(results,playlistIndex)
+            if not entries then
+                showMessage({"Playlist add failed",trimText(buildErr or "Unknown error",26)},2)
+                return
+            end
+
+            local added = sendEntriesInBatches(entries)
+            showMessage({"Playlist detected","Added "..tostring(added).." track(s)"},1.5)
+            return
+        end
+    end
+
+    term.clear()
+    term.setCursorPos(1,1)
+    print("YouTube Results")
+    print("")
+
+    for i,item in ipairs(results) do
+        local kind=item.type=="playlist" and "[LIST]" or "[YT]"
+        local artist=item.artist or item.channel or "YouTube"
+        print(string.format("%d) %s %s",i,kind,item.name or item.title or "Unknown"))
+        print("   "..artist)
+        if i>=8 then
+            break
+        end
+    end
+
+    print("")
+    print("Choose number:")
+    local pick=tonumber(read())
+    local entries,buildErr=buildYoutubeEntries(results,pick)
+    if not entries then
+        showMessage({"Add failed",trimText(buildErr or "Unknown error",26)},1.5)
+        return
+    end
+
+    local added = sendEntriesInBatches(entries)
+    showMessage({"Added "..tostring(added).." track(s)"},1.5)
 end
 
 local function promptDeleteSong()
